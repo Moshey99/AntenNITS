@@ -340,15 +340,17 @@ class NITSPrimitive(nn.Module):
 
         return x_hat
 
-class NITS(nn.Module):
-    def __init__(self, arch, start=-2., end=2., A_constraint='neg_exp',
+class NITS(NITSPrimitive):
+    def __init__(self, d, arch, start=-2., end=2., A_constraint='neg_exp',
                  monotonic_const=1e-2, final_layer_constraint='softmax',
                  add_residual_connections=False, normalize_inverse=True,
                  softmax_temperature=True, share_mixture_components=False,
                  bisection_eps=1e-6):
-        super(NITS, self).__init__()
-        d = self.d = int(arch[0])
-        arch[0] = 1
+        super(NITS, self).__init__(arch, start, end,
+                                   A_constraint=A_constraint,
+                                   monotonic_const=monotonic_const,
+                                   final_layer_constraint=final_layer_constraint)
+        self.d = d
         self.final_layer_constraint = final_layer_constraint
         self.add_residual_connections = add_residual_connections
         self.normalize_inverse = normalize_inverse

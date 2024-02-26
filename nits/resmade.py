@@ -296,7 +296,7 @@ class CausalTransformer(nn.Module):
     
 
 class ResidualMADE(nn.Module):
-    def __init__(self, input_dim, n_blocks, hidden_dim,
+    def __init__(self, input_dim, n_residual_blocks, hidden_dim,
                  output_dim_multiplier, conditional=False, conditioning_dim=None,
                  activation=F.relu, use_batch_norm=False,
                  dropout_probability=None, zero_initialization=True,
@@ -326,7 +326,7 @@ class ResidualMADE(nn.Module):
                 zero_initialization=zero_initialization,
                 weight_norm=weight_norm
             )
-                for _ in range(n_blocks)]
+                for _ in range(n_residual_blocks)]
         )
         self.final_layer = MaskedLinear(
             hidden_dim,
@@ -389,7 +389,7 @@ def check_masks():
     
     made = ResidualMADE(
         input_dim=input_dim,
-        n_blocks=n_blocks,
+        n_residual_blocks=n_blocks,
         hidden_dim=hidden_dim,
         output_dim_multiplier=output_dim_multiplier
     )

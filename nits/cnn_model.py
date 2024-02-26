@@ -38,8 +38,8 @@ def ll_to_bpd(ll, shape=(32, 32, 3), bits=8):
     return bpd
 
 def cnn_nits_loss(x, params, nits_model, eps=1e-7, discretized=False, dequantize=False):
-    x = x.permute(0, 2, 3, 1)
-    params = params.permute(0, 2, 3, 1)
+    # x = x.permute(0, 2, 3, 1)
+    # params = params.permute(0, 2, 3, 1)
 
     nits_model = nits_model.to(x.device)
     x = x.reshape(-1, nits_model.d)

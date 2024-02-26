@@ -80,11 +80,11 @@ class EMA(nn.Module):
             # buffers are copied
             shadow_buffers[name].copy_(buffer)
 
-    def forward(self, *args):
+    def forward(self, x):
         if self.training:
-            return self.model(*args)
+            return self.model(x)
         else:
-            return self.shadow(*args)
+            return self.shadow(x)
         
 #     def __setattr__(self, attr):
 #         print(attr)
