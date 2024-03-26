@@ -44,7 +44,7 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--save_dir', type=str, default='models',
                         help='Location for parameter checkpoints and samples')
     parser.add_argument('-d', '--dataset', type=str,
-                        default='cifar10', help='Can be either cifar|mnist')
+                        default='mnist', help='Can be either cifar|mnist')
     parser.add_argument('-t', '--save_interval', type=int, default=2,
                         help='Every how many epochs to write checkpoint/samples?')
     parser.add_argument('-r', '--load_epoch', type=int, default=0,
@@ -65,14 +65,14 @@ if __name__ == '__main__':
     parser.add_argument('-x', '--max_epochs', type=int,
                         default=1, help='How many epochs to run in total?')
     parser.add_argument('-mc', '--monotonic_const', type=int,
-                        default=7, help='Monotonic const parameter')
+                        default=5, help='Monotonic const parameter')
     parser.add_argument('-s', '--seed', type=int, default=1,
                         help='Random seed to use')
-    parser.add_argument('-ds', '--discretized', type=bool, default=False,
+    parser.add_argument('-ds', '--discretized', type=bool, default=True,
                         help='Discretized model')
     parser.add_argument('-ns', '--no_nits', action='store_true',
                         help='nits model')
-    parser.add_argument('-at', '--attention', type=str, default='',
+    parser.add_argument('-at', '--attention', type=str, default='full',
                         help='Attention-based NITS')
     parser.add_argument('-ni', '--normalize_inverse', type=bool, default=False,
                         help='apply normalization?')
@@ -88,10 +88,11 @@ if __name__ == '__main__':
                        help='Weights for each step of multistep NITS')
     parser.add_argument('-bg', '--background', type=bool, default=False,
                        help='Shall we add a background?')
-    parser.add_argument('-ae', '--autoencoder_weight', type=float, default=0.1,
+    parser.add_argument('-ae', '--autoencoder_weight', type=float, default=0.,
                        help='add autoencoding loss?')
     parser.add_argument('-pd', '--polyak_decay', type=float, default=0.995,
                        help='decay factor for EMA')
+    parser.add_argument('--nits_bound',type=float, default=1.)
     args = parser.parse_args()
 
     if args.gpus:
@@ -174,18 +175,16 @@ if __name__ == '__main__':
     test_loader  = torch.utils.data.DataLoader(dset(args.data_dir, train=False,
                     transform=ds_transforms), batch_size=args.batch_size, shuffle=True, **kwargs)
 
-
-    assert np.isclose(1e-7, np.power(10., -7))
-
+    alldata = train_loader.dataset.data
     if args.no_nits:
         print('DEFAULT DISCRETIZED MoL')
         # n_params = 100
         n_params = 160
     else:
         print("NITS")
-        nits_bound = 5
+        nits_bound = args.nits_bound
         arch = [obs[0]] + args.nits_arch
-        nits_model = ConditionalNITS( start=-nits_bound, end=nits_bound, monotonic_const=np.power(10., -args.monotonic_const),
+        nits_model = ConditionalNITS( start=-nits_bound, end=nits_bound, monotonic_const=10**(-args.monotonic_const),
                                         A_constraint='neg_exp', arch=arch, autoregressive=True,
                                         normalize_inverse=args.normalize_inverse,
                                         final_layer_constraint='softmax',
@@ -210,6 +209,7 @@ if __name__ == '__main__':
         ae_loss = torch.tensor(0., device=input.device)
         og_input = input
         og_output = output = model(input)
+        og_output = output = model(input)
         i = -1
 
         if test:
@@ -225,10 +225,6 @@ if __name__ == '__main__':
 
         if test or args.autoencoder_weight > 0:
             input_reconstruction = sample_op(output)
-            plt.imshow(input_reconstruction[0,0].cpu().detach().numpy())
-            plt.savefig('test_reconst.png')
-            plt.imshow(og_input[0,0].cpu().detach().numpy())
-            plt.savefig('test_input.png')
             ae_loss = ((og_input - input_reconstruction) ** 2).sum() * args.autoencoder_weight
         return loss, ae_loss
 
@@ -240,7 +236,7 @@ if __name__ == '__main__':
         shadow = FACNN(nr_resnet=args.nr_resnet, nr_filters=args.nr_filters,
                     input_channels=input_channels, n_params=n_params, dropout=dropout)
     elif args.attention == 'snail':
-        print("USING SNAIL")
+        print(  "USING SNAIL")
         model = ACNN(nr_resnet=args.nr_resnet, nr_filters=args.nr_filters,
                     input_channels=input_channels, n_params=n_params, dropout=dropout)
         shadow = ACNN(nr_resnet=args.nr_resnet, nr_filters=args.nr_filters,
@@ -282,7 +278,6 @@ if __name__ == '__main__':
                                 shuffle=True, **kwargs)
 
 
-
     def standardize_loss(loss, batch_idx):
         if args.no_nits or args.discretized:
             loss /= batch_idx * args.batch_size * np.prod(obs) * np.log(2.)
@@ -309,7 +304,6 @@ if __name__ == '__main__':
         time_ = time.time()
         model.train()
         for batch_idx, (input,_) in enumerate(train_loader):
-            input = input.to(devices[0])
             loss, ae_loss = compute_loss(model, input, loss_op)
             optimizer.zero_grad()
             (loss + ae_loss).backward()

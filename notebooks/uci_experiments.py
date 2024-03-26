@@ -1,6 +1,5 @@
 import argparse
 import sys
-sys.path.append(r'C:\Users\moshey\PycharmProjects\NITS')
 import time
 import torch
 import numpy as np
@@ -13,9 +12,87 @@ from maf.datasets import *
 from nits.resmade import ResidualMADE
 from nits.fc_model import ResMADEModel
 from scipy.stats import gaussian_kde
+from scipy.special import kl_div
 import os
+from pathlib import Path
+import glob
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
+def correlation_dist(corr_mat1,corr_mat2):
+    d = 1 - np.trace(np.dot(corr_mat1,corr_mat2))/(np.linalg.norm(corr_mat1)*np.linalg.norm(corr_mat2))
+    return d
+
+def kl_eval(model, data, n):
+    paths = sorted(glob.glob('models/ANTmodel_*.pth'))
+    vv = np.linspace(-4, 4, num=7000)
+    kl_divs = []
+    for path in paths:
+        kl_divs_path = []
+        print(path)
+        model.load_state_dict(torch.load(path,map_location=device))
+        smp = model.model.sample(n, device)
+        for feature in range(smp.shape[1]):
+            kde_smp = gaussian_kde(smp[:,feature]).pdf(vv)
+            kde_real = gaussian_kde(data.trn.x[:,feature]).pdf(vv)
+            kl_div_value = np.sum(kl_div(kde_real,kde_smp))
+            kl_divs_path.append(kl_div_value)
+        kl_divs.append(kl_divs_path)
+    kl_divs = np.array(kl_divs)
+    kl_divs = np.sum(kl_divs,axis=1)
+    best_path = paths[np.argmin(kl_divs)]
+    print(f'best model for KL Divergence evaluation is {best_path}')
+    return
+
+def correlation_eval(model, data, n):
+    paths = sorted(glob.glob('models/ANTmodel_*.pth'))
+    distances = []
+    for path in paths:
+        print(path)
+        model.load_state_dict(torch.load(path,map_location=device))
+        smp = model.model.sample(n, device)
+        corr_real,corr_smp = calc_corr_cov(smp, data)
+        dist = correlation_dist(corr_real,corr_smp)
+        distances.append(dist)
+    best_path = paths[np.argmin(distances)]
+    print(f'best model for correlation matrices evaluation is {best_path}')
+    return
+
+class standard_scaler():
+    def __init__(self):
+        self.mean = None
+        self.std = None
+    def fit(self,data):
+        self.mean = np.mean(data,axis=0)
+        self.std = np.std(data,axis=0)
+    def forward(self,input):
+        return (input - self.mean)/self.std
+    def inverse(self,input):
+        return input*self.std + self.mean
+def calc_corr_cov(smp, data, path_to_save=None):
+    n = len(smp)
+    real = torch.Tensor(data.trn.x)
+    corr_smp = np.corrcoef(smp.cpu().detach().numpy().T)
+    plt.figure()
+    plt.imshow(corr_smp, interpolation='nearest')
+    plt.colorbar()
+    plt.title('Correlation matrix of generated samples')
+    if path_to_save is not None:
+        plt.savefig(f'{path_to_save}/correlation_matrices_generated.png')
+    plt.figure()
+    corr_real = np.corrcoef(real[:n].cpu().detach().numpy().T)
+    plt.imshow(corr_real, interpolation='nearest')
+    plt.colorbar()
+    plt.title('Correlation matrix of real samples')
+    if path_to_save is not None:
+        plt.savefig(f'{path_to_save}/correlation_matrices_real.png')
+    plt.figure()
+    diff = np.abs(corr_smp - corr_real)
+    plt.imshow(diff, interpolation='nearest')
+    plt.colorbar()
+    plt.title('Difference between Correlation matrices')
+    if path_to_save is not None:
+        plt.savefig(f'{path_to_save}/correlation_matrices_difference.png')
+    return corr_real,corr_smp
 def list_str_to_list(s):
     print(s)
     assert s[0] == '[' and s[-1] == ']'
@@ -63,20 +140,21 @@ parser.add_argument('-ds', '--discretized', type=bool, default=False,
 parser.add_argument('-w', '--step_weights', type=list_str_to_list, default='[1]',
                     help='Weights for each step of multistep NITS')
 parser.add_argument('--scarf', action="store_true")
-parser.add_argument('--bounds',type=list_str_to_list,default='[-3,3]')
+parser.add_argument('--bounds',type=list_str_to_list,default='[-10,10]')
 args = parser.parse_args()
-polyak_decay = [0.995]
-for pd in polyak_decay:
-    model_extra_string = f'polyak_decay_{pd}_{args.nits_arch}_bounds{args.bounds}'
+lr_grid = [2e-4]
+max_vals_ll = []
+for lr in lr_grid:
+    model_extra_string = f'lr_{lr}_{args.nits_arch}_bounds{args.bounds}'
     print(model_extra_string)
-    args.polyak_decay = pd
+    args.learning_rate = lr
 
     step_weights = np.array(args.step_weights)
     step_weights = step_weights / (np.sum(step_weights) + 1e-7)
 
     device = 'cuda:' + args.gpu if args.gpu else 'cpu'
 
-    use_batch_norm = False
+    use_batch_norm = True
     zero_initialization = True
     weight_norm = False
     default_patience = 10
@@ -105,6 +183,23 @@ for pd in polyak_decay:
         # training set size: 1,000,000
         data = bsds300.BSDS300()
         default_dropout = 0.2
+    elif args.dataset == 'antenna':
+        data_path = r'../etof_folder_git/AntennaDesign_data/newdata_dB.npz'
+        data_tmp = np.load(data_path)
+        data = miniboone.MINIBOONE()
+        data.Data = data_tmp
+        data.n_dims = data_tmp['parameters_train'].shape[1]
+        scaler = standard_scaler()
+        scaler.fit(data_tmp['parameters_train'])
+        train_params_scaled = scaler.forward(data_tmp['parameters_train'])
+        val_params_scaled = scaler.forward(data_tmp['parameters_val'])
+        test_params_scaled = scaler.forward(data_tmp['parameters_test'])
+        data.trn.x = train_params_scaled.astype(np.float32)
+        data.val.x = val_params_scaled.astype(np.float32)
+        data.tst.x = test_params_scaled.astype(np.float32)
+        args.batch_size = 50
+        args.hidden_dim = 128
+        default_dropout = 0
 
     args.patience = args.patience if args.patience >= 0 else default_patience
     args.dropout = args.dropout if args.dropout >= 0.0 else default_dropout
@@ -112,8 +207,8 @@ for pd in polyak_decay:
 
     d = data.trn.x.shape[1]
 
-    max_val = args.bounds[1] #max(data.trn.x.max(), data.val.x.max(), data.tst.x.max())
-    min_val = args.bounds[0]#min(data.trn.x.min(), data.val.x.min(), data.tst.x.min())
+    max_val = max(data.trn.x.max(), data.val.x.max(), data.tst.x.max()) # args.bounds[1]
+    min_val = min(data.trn.x.min(), data.val.x.min(), data.tst.x.min()) # args.bounds[0]
     max_val, min_val = torch.tensor(max_val).to(device).float(), torch.tensor(min_val).to(device).float()
 
     max_val *= args.bound_multiplier
@@ -159,27 +254,34 @@ for pd in polyak_decay:
                 break
 
     model = EMA(model, shadow, decay=args.polyak_decay).to(device)
-    model.load_state_dict(torch.load(r"models/model_polyak_decay_0.995_[16, 16, 1]_bounds[-10, 10].pth",map_location=device))
-    vv = np.linspace(-4, 4, num=7000)
-    first_time = time.time()
-    n = 2000
-    smp = model.model.sample(n, device)
-    time__ = time.time()
-    print(f'time for sampling {n} samples: {time__ - first_time}')
-    real = torch.Tensor(data.trn.x)
-    dict_prints = {0: 'generated sample', 1: 'real sample'}
-    for feature in range(d):
-        plt.figure()
-        for i,example in enumerate([smp,torch.Tensor(real)]):
-            print(dict_prints[i])
-            # params = model.model.mlp(example)
-            # cdf_ = model.model.nits_model.cdf(example, params).detach().cpu().numpy()
-            kde = gaussian_kde(example[:,feature]).pdf(vv)
-            plt.plot(vv, kde,'.', label=f'pdf {dict_prints[i]}')
-        #save figures to figures folder
-        plt.title(f'pdf comparison NITS (generated {n} samples) vs train data for feature no. {feature}')
-        plt.legend()
-        plt.savefig(f'figures/arch_16_16_1_bounds10/feature_{feature}_pdf_comparison.png')
+    # n = 5000
+    # vv = np.linspace(-4, 4, num=7000)
+    # paths = sorted(glob.glob('models/ANTmodel_*.pth'))
+    # distances = []
+    # # correlation_eval(model,data,n)
+    # # kl_eval(model,data,n)
+    # for path in paths:
+    #     print(path)
+    #     folder_to_save = path.split('\\')[1][:-4]
+    #     path_to_save = f'figures/{folder_to_save}'
+    #     Path(path_to_save).mkdir(parents=True, exist_ok=True)
+    #     model.load_state_dict(torch.load(path,map_location=device))
+    #     real = torch.Tensor(data.trn.x)
+    #     dict_prints = {0: 'generated sample', 1: 'real sample'}
+    #     smp = model.model.sample(n, device)
+    #     calc_corr_cov(smp, data, path_to_save)
+    #     for feature in range(d):
+    #         plt.figure()
+    #         for i,example in enumerate([smp,torch.Tensor(real)]):
+    #             kde = gaussian_kde(example[:,feature]).pdf(vv)
+    #             plt.plot(vv, kde,'.', label=f'pdf {dict_prints[i]}')
+    #         plt.xlabel('feature value')
+    #         plt.ylabel('pdf')
+    #         plt.title(f'pdf comparison NITS (generated {n} samples) vs train data for feature no. {feature}')
+    #         plt.legend()
+    #         path_to_save_pdf = f'{path_to_save}/pdf_feature_{feature}.png'
+    #         plt.savefig(path_to_save_pdf)
+
 
 
     # print number of parameters
@@ -200,14 +302,13 @@ for pd in polyak_decay:
         print('epoch', epoch, 'time [min]', round((time.time() - start_time)/60) , 'lr', optim.param_groups[0]['lr'])
         model.train()
         for i, x in enumerate(create_batcher(data.trn.x, batch_size=args.batch_size)):
-            ll = model(x)
-            ll_loss= -ll.mean()
+            ll = model(x).sum()
             optim.zero_grad()
-            ll_loss.backward()
-            train_ll += ll.mean().detach().cpu().numpy()
+            (-ll).backward()
+            train_ll += ll.detach().cpu().numpy()
             optim.step()
             model.update()
-        print(f'current log-likelihood loss: {ll_loss.item()}')
+        print(f'current log-likelihood loss: {ll.item()}')
         epoch += 1
 
         if epoch % print_every == 0:
@@ -238,6 +339,7 @@ for pd in polyak_decay:
                 scheduler.step()
             if patience == 0:
                 print("Patience reached zero. max_val_ll stayed at {:.3f} for {:d} iterations.".format(max_val_ll, args.patience))
+                max_vals_ll.append(max_val_ll)
                 keep_training = False
 
             with torch.no_grad():
@@ -271,4 +373,7 @@ for pd in polyak_decay:
 
         if epoch % (print_every * 10) == 0:
             print(args)
-        torch.save(model.state_dict(), f'model_{model_extra_string}.pth')
+    dict_to_print = {lr:max_val for lr,max_val in zip(lr_grid,max_vals_ll)}
+    print(dict_to_print)
+    print(f'saving model for:\n{args}')
+    torch.save(model.state_dict(), f'ANTmodel_{model_extra_string}.pth')

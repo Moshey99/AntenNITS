@@ -90,8 +90,8 @@ def cnn_nits_sample(params, nits_model, quantize=False):
     batch_size, height, width, params_per_pixel = params.shape
 
     nits_model = nits_model.to(params.device)
-
-    imgs = nits_model.sample(1, params.reshape(-1, nits_model.tot_params)).clamp(min=-1., max=1.)
+    imgs = nits_model.sample(1, params.reshape(-1, nits_model.tot_params))
+    #imgs = nits_model.sample(1, params.reshape(-1, nits_model.tot_params)).clamp(min=-1., max=1.)
     imgs = imgs.reshape(batch_size, height, width, nits_model.d).permute(0, 3, 1, 2)
 
     if quantize:
