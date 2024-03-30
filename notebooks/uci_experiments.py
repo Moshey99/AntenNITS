@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import sys
 import time
 import torch
@@ -118,12 +119,12 @@ def create_batcher(x, batch_size=1):
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('-d', '--dataset', type=str, default='miniboone')
+parser.add_argument('-d', '--dataset', type=str, default='antenna')
 parser.add_argument('-g', '--gpu', type=str, default='')
 parser.add_argument('-b', '--batch_size', type=int, default=500)
 parser.add_argument('-hi', '--hidden_dim', type=int, default=512)
 parser.add_argument('-nr', '--n_residual_blocks', type=int, default=8)
-parser.add_argument('-n', '--patience', type=int, default=6)
+parser.add_argument('-n', '--patience', type=int, default=10)
 parser.add_argument('-ga', '--gamma', type=float, default=0.9)
 parser.add_argument('-pd', '--polyak_decay', type=float, default=0.995)
 parser.add_argument('-a', '--nits_arch', type=list_str_to_list, default='[16,16,1]')
@@ -142,9 +143,10 @@ parser.add_argument('-w', '--step_weights', type=list_str_to_list, default='[1]'
 parser.add_argument('--scarf', action="store_true")
 parser.add_argument('--bounds',type=list_str_to_list,default='[-10,10]')
 args = parser.parse_args()
-lr_grid = [2e-4]
+lr_grid = [2e-4,5e-4,1e-3]
+hidden_dim_grid = [128,256,512,1024]
 max_vals_ll = []
-for lr in lr_grid:
+for lr in itertools.product(lr_grid):
     model_extra_string = f'lr_{lr}_{args.nits_arch}_bounds{args.bounds}'
     print(model_extra_string)
     args.learning_rate = lr
@@ -162,6 +164,9 @@ for lr in lr_grid:
         # training set size: 852,174
         data = gas.GAS()
         default_dropout = 0.1
+        args.hidden_dim = 1024
+        args.batch_size = 1024
+        args.n_residual_blocks = 4
     elif args.dataset == 'power':
         # training set size: 1,659,917
         data = power.POWER()
@@ -198,9 +203,9 @@ for lr in lr_grid:
         data.val.x = val_params_scaled.astype(np.float32)
         data.tst.x = test_params_scaled.astype(np.float32)
         args.batch_size = 50
-        args.hidden_dim = 128
+        args.hidden_dim = 256
         default_dropout = 0
-
+    model_extra_string = model_extra_string + f'_hidden_dim_{args.hidden_dim}'
     args.patience = args.patience if args.patience >= 0 else default_patience
     args.dropout = args.dropout if args.dropout >= 0.0 else default_dropout
     print(args)
@@ -221,7 +226,7 @@ for lr in lr_grid:
                       normalize_inverse=(not args.dont_normalize_inverse),
                       softmax_temperature=False).to(device)
 
-    model = ResMADEModel(
+    model = Model(
         d=d,
         rotate=args.rotate,
         nits_model=nits_model,
@@ -233,7 +238,7 @@ for lr in lr_grid:
         weight_norm=weight_norm,
         nits_input_dim=nits_input_dim).to(device)
 
-    shadow = ResMADEModel(
+    shadow = Model(
                 d=d,
                 rotate=args.rotate,
                 nits_model=nits_model,
@@ -254,9 +259,9 @@ for lr in lr_grid:
                 break
 
     model = EMA(model, shadow, decay=args.polyak_decay).to(device)
-    # n = 5000
+    # n = 500
     # vv = np.linspace(-4, 4, num=7000)
-    # paths = sorted(glob.glob('models/ANTmodel_*.pth'))
+    # paths = sorted(glob.glob('models/ANTmodel_*_1024.pth'))
     # distances = []
     # # correlation_eval(model,data,n)
     # # kl_eval(model,data,n)
@@ -266,7 +271,7 @@ for lr in lr_grid:
     #     path_to_save = f'figures/{folder_to_save}'
     #     Path(path_to_save).mkdir(parents=True, exist_ok=True)
     #     model.load_state_dict(torch.load(path,map_location=device))
-    #     real = torch.Tensor(data.trn.x)
+    #     real = torch.Tensor(data.val.x)
     #     dict_prints = {0: 'generated sample', 1: 'real sample'}
     #     smp = model.model.sample(n, device)
     #     calc_corr_cov(smp, data, path_to_save)
@@ -279,6 +284,7 @@ for lr in lr_grid:
     #         plt.ylabel('pdf')
     #         plt.title(f'pdf comparison NITS (generated {n} samples) vs train data for feature no. {feature}')
     #         plt.legend()
+    #     plt.show()
     #         path_to_save_pdf = f'{path_to_save}/pdf_feature_{feature}.png'
     #         plt.savefig(path_to_save_pdf)
 
@@ -286,7 +292,7 @@ for lr in lr_grid:
 
     # print number of parameters
     print('number of model parameters:', sum([np.prod(p.size()) for p in model.parameters()]))
-    print_every = 10 if args.dataset != 'miniboone' else 1
+    print_every = 1 if args.dataset != 'miniboone' else 1
     optim = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     scheduler = torch.optim.lr_scheduler.StepLR(optim, step_size=1, gamma=args.gamma)
 
@@ -308,9 +314,8 @@ for lr in lr_grid:
             train_ll += ll.detach().cpu().numpy()
             optim.step()
             model.update()
-        print(f'current log-likelihood loss: {ll.item()}')
         epoch += 1
-
+        print('current ll loss:', ll / len(x))
         if epoch % print_every == 0:
             # compute train loss
             train_ll /= len(data.trn.x) * print_every
@@ -322,8 +327,8 @@ for lr in lr_grid:
                 ema_val_ll = 0.
                 for i, x in enumerate(create_batcher(data.val.x, batch_size=args.batch_size)):
                     x = torch.tensor(x, device=device)
-                    val_ll += model.model(x).mean().detach().cpu().numpy()
-                    ema_val_ll += model(x).mean().detach().cpu().numpy()
+                    val_ll += model.model(x).sum().detach().cpu().numpy()
+                    ema_val_ll += model(x).sum().detach().cpu().numpy()
 
                 val_ll /= len(data.val.x)
                 ema_val_ll /= len(data.val.x)
@@ -348,8 +353,8 @@ for lr in lr_grid:
                 ema_test_ll = 0.
                 for i, x in enumerate(create_batcher(data.tst.x, batch_size=args.batch_size)):
                     x = torch.tensor(x, device=device)
-                    test_ll += model.model(x).mean().detach().cpu().numpy()
-                    ema_test_ll += model(x).mean().detach().cpu().numpy()
+                    test_ll += model.model(x).sum().detach().cpu().numpy()
+                    ema_test_ll += model(x).sum().detach().cpu().numpy()
 
                 test_ll /= len(data.tst.x)
                 ema_test_ll /= len(data.tst.x)
@@ -376,4 +381,4 @@ for lr in lr_grid:
     dict_to_print = {lr:max_val for lr,max_val in zip(lr_grid,max_vals_ll)}
     print(dict_to_print)
     print(f'saving model for:\n{args}')
-    torch.save(model.state_dict(), f'ANTmodel_{model_extra_string}.pth')
+    torch.save(model.state_dict(), f'models\\ANT_model_{model_extra_string}.pth')
