@@ -308,7 +308,7 @@ class ResMADEModel(nn.Module):
 class Model(nn.Module):
     def __init__(self, d, nits_model, n_residual_blocks=4, hidden_dim=512,
                  dropout_probability=0., rotate=False, use_normalizer=False, weight_norm=False,
-                 zero_initialization=False, use_batch_norm=False, nits_input_dim=[]):
+                 zero_initialization=False, use_batch_norm=False, nits_input_dim=[],conditional=False,conditional_dim=None):
         super().__init__()
         self.d = d
         self.n_params = nits_model.n_params
@@ -326,7 +326,9 @@ class Model(nn.Module):
             dropout_probability=dropout_probability,
             use_batch_norm=use_batch_norm,
             zero_initialization=zero_initialization,
-            weight_norm=weight_norm
+            weight_norm=weight_norm,
+            conditional=conditional,
+            conditioning_dim=conditional_dim
         )
 
         self.rotate = rotate

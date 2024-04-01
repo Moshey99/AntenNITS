@@ -17,11 +17,41 @@ from scipy.special import kl_div
 import os
 from pathlib import Path
 import glob
-os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
-def correlation_dist(corr_mat1,corr_mat2):
-    d = 1 - np.trace(np.dot(corr_mat1,corr_mat2))/(np.linalg.norm(corr_mat1)*np.linalg.norm(corr_mat2))
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+dictionary = {'lr_0.0002_hd_128_nr_4_pd_0.9': (-2.716, -2.101), 'lr_0.0002_hd_128_nr_4_pd_0.95': (-3.068, -1.905),
+              'lr_0.0002_hd_128_nr_4_pd_0.995': (-2.063, -2.328), 'lr_0.0002_hd_128_nr_8_pd_0.9': (-5.43, -6.124),
+              'lr_0.0002_hd_128_nr_8_pd_0.95': (-2.001, -1.416), 'lr_0.0002_hd_128_nr_8_pd_0.995': (-4.042, -4.726),
+              'lr_0.0002_hd_256_nr_4_pd_0.9': (-4.138, -2.309), 'lr_0.0002_hd_256_nr_4_pd_0.95': (-5.431, -5.583),
+              'lr_0.0002_hd_256_nr_4_pd_0.995': (-5.439, -5.367), 'lr_0.0002_hd_256_nr_8_pd_0.9': (-2.512, -0.21),
+              'lr_0.0002_hd_256_nr_8_pd_0.95': (-2.631, -0.124), 'lr_0.0002_hd_256_nr_8_pd_0.995': (-3.997, -3.58),
+              'lr_0.0002_hd_512_nr_4_pd_0.9': (-4.301, -0.547), 'lr_0.0002_hd_512_nr_4_pd_0.95': (-4.355, -1.777),
+              'lr_0.0002_hd_512_nr_4_pd_0.995': (-6.316, -5.94), 'lr_0.0002_hd_512_nr_8_pd_0.9': (-3.46, 0.596),
+              'lr_0.0002_hd_512_nr_8_pd_0.95': (-3.622, 0.341), 'lr_0.0002_hd_512_nr_8_pd_0.995': (-3.241, 0.981),
+              'lr_0.0005_hd_128_nr_4_pd_0.9': (-2.282, -1.038), 'lr_0.0005_hd_128_nr_4_pd_0.95': (-6.147, -6.489),
+              'lr_0.0005_hd_128_nr_4_pd_0.995': (-2.912, -3.024), 'lr_0.0005_hd_128_nr_8_pd_0.9': (-1.393, 0.149),
+              'lr_0.0005_hd_128_nr_8_pd_0.95': (-3.908, -3.985), 'lr_0.0005_hd_128_nr_8_pd_0.995': (-2.477, -2.133),
+              'lr_0.0005_hd_256_nr_4_pd_0.9': (-4.42, -3.434), 'lr_0.0005_hd_256_nr_4_pd_0.95': (-5.36, -5.635),
+              'lr_0.0005_hd_256_nr_4_pd_0.995': (-3.306, -0.552), 'lr_0.0005_hd_256_nr_8_pd_0.9': (-3.19, -2.652),
+              'lr_0.0005_hd_256_nr_8_pd_0.95': (-2.412, 0.466), 'lr_0.0005_hd_256_nr_8_pd_0.995': (-4.59, -5.892),
+              'lr_0.0005_hd_512_nr_4_pd_0.9': (-3.597, 0.227), 'lr_0.0005_hd_512_nr_4_pd_0.95': (-3.184, 1.566),
+              'lr_0.0005_hd_512_nr_4_pd_0.995': (-3.039, 1.86), 'lr_0.0005_hd_512_nr_8_pd_0.9': (-3.724, -3.781),
+              'lr_0.0005_hd_512_nr_8_pd_0.95': (-2.573, 2.131), 'lr_0.0005_hd_512_nr_8_pd_0.995': (-4.014, -4.36),
+              'lr_0.001_hd_128_nr_4_pd_0.9': (-3.895, -1.719), 'lr_0.001_hd_128_nr_4_pd_0.95': (-2.263, -0.38),
+              'lr_0.001_hd_128_nr_4_pd_0.995': (-6.367, -6.936), 'lr_0.001_hd_128_nr_8_pd_0.9': (-4.678, -5.891),
+              'lr_0.001_hd_128_nr_8_pd_0.95': (-1.676, 1.278), 'lr_0.001_hd_128_nr_8_pd_0.995': (-7.51, -8.028),
+              'lr_0.001_hd_256_nr_4_pd_0.9': (-2.511, -0.242), 'lr_0.001_hd_256_nr_4_pd_0.95': (-1.777, 2.386),
+              'lr_0.001_hd_256_nr_4_pd_0.995': (-2.782, 0.686), 'lr_0.001_hd_256_nr_8_pd_0.9': (-2.992, -1.068),
+              'lr_0.001_hd_256_nr_8_pd_0.95': (-4.263, -4.315), 'lr_0.001_hd_256_nr_8_pd_0.995': (-3.542, -3.592),
+              'lr_0.001_hd_512_nr_4_pd_0.9': (-3.183, -2.455), 'lr_0.001_hd_512_nr_4_pd_0.95': (-3.339, -1.003),
+              'lr_0.001_hd_512_nr_4_pd_0.995': (-1.982, 1.7), 'lr_0.001_hd_512_nr_8_pd_0.9': (-1.532, -0.299),
+              'lr_0.001_hd_512_nr_8_pd_0.95': (-2.021, -0.013), 'lr_0.001_hd_512_nr_8_pd_0.995': (-3.821, -4.516)}
+
+
+def correlation_dist(corr_mat1, corr_mat2):
+    d = 1 - np.trace(np.dot(corr_mat1, corr_mat2)) / (np.linalg.norm(corr_mat1) * np.linalg.norm(corr_mat2))
     return d
+
 
 def kl_eval(model, data, n):
     paths = sorted(glob.glob('models/ANTmodel_*.pth'))
@@ -30,45 +60,52 @@ def kl_eval(model, data, n):
     for path in paths:
         kl_divs_path = []
         print(path)
-        model.load_state_dict(torch.load(path,map_location=device))
+        model.load_state_dict(torch.load(path, map_location=device))
         smp = model.model.sample(n, device)
         for feature in range(smp.shape[1]):
-            kde_smp = gaussian_kde(smp[:,feature]).pdf(vv)
-            kde_real = gaussian_kde(data.trn.x[:,feature]).pdf(vv)
-            kl_div_value = np.sum(kl_div(kde_real,kde_smp))
+            kde_smp = gaussian_kde(smp[:, feature]).pdf(vv)
+            kde_real = gaussian_kde(data.trn.x[:, feature]).pdf(vv)
+            kl_div_value = np.sum(kl_div(kde_real, kde_smp))
             kl_divs_path.append(kl_div_value)
         kl_divs.append(kl_divs_path)
     kl_divs = np.array(kl_divs)
-    kl_divs = np.sum(kl_divs,axis=1)
+    kl_divs = np.sum(kl_divs, axis=1)
     best_path = paths[np.argmin(kl_divs)]
     print(f'best model for KL Divergence evaluation is {best_path}')
     return
+
 
 def correlation_eval(model, data, n):
     paths = sorted(glob.glob('models/ANTmodel_*.pth'))
     distances = []
     for path in paths:
         print(path)
-        model.load_state_dict(torch.load(path,map_location=device))
+        model.load_state_dict(torch.load(path, map_location=device))
         smp = model.model.sample(n, device)
-        corr_real,corr_smp = calc_corr_cov(smp, data)
-        dist = correlation_dist(corr_real,corr_smp)
+        corr_real, corr_smp = calc_corr_cov(smp, data)
+        dist = correlation_dist(corr_real, corr_smp)
         distances.append(dist)
     best_path = paths[np.argmin(distances)]
     print(f'best model for correlation matrices evaluation is {best_path}')
     return
 
+
 class standard_scaler():
     def __init__(self):
         self.mean = None
         self.std = None
-    def fit(self,data):
-        self.mean = np.mean(data,axis=0)
-        self.std = np.std(data,axis=0)
-    def forward(self,input):
-        return (input - self.mean)/self.std
-    def inverse(self,input):
-        return input*self.std + self.mean
+
+    def fit(self, data):
+        self.mean = np.mean(data, axis=0)
+        self.std = np.std(data, axis=0)
+
+    def forward(self, input):
+        return (input - self.mean) / self.std
+
+    def inverse(self, input):
+        return input * self.std + self.mean
+
+
 def calc_corr_cov(smp, data, path_to_save=None):
     n = len(smp)
     real = torch.Tensor(data.trn.x)
@@ -93,7 +130,9 @@ def calc_corr_cov(smp, data, path_to_save=None):
     plt.title('Difference between Correlation matrices')
     if path_to_save is not None:
         plt.savefig(f'{path_to_save}/correlation_matrices_difference.png')
-    return corr_real,corr_smp
+    return corr_real, corr_smp
+
+
 def list_str_to_list(s):
     print(s)
     assert s[0] == '[' and s[-1] == ']'
@@ -105,13 +144,14 @@ def list_str_to_list(s):
 
     return s
 
+
 def create_batcher(x, batch_size=1):
     idx = 0
     p = torch.randperm(len(x))
     x = x[p]
 
     while idx + batch_size < len(x):
-        yield torch.tensor(x[idx:idx+batch_size], device=device)
+        yield torch.tensor(x[idx:idx + batch_size], device=device)
         idx += batch_size
     else:
         yield torch.tensor(x[idx:], device=device)
@@ -121,8 +161,8 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument('-d', '--dataset', type=str, default='antenna')
 parser.add_argument('-g', '--gpu', type=str, default='')
-parser.add_argument('-b', '--batch_size', type=int, default=500)
-parser.add_argument('-hi', '--hidden_dim', type=int, default=512)
+parser.add_argument('-b', '--batch_size', type=int, default=20)
+parser.add_argument('-hi', '--hidden_dim', type=int, default=128)
 parser.add_argument('-nr', '--n_residual_blocks', type=int, default=8)
 parser.add_argument('-n', '--patience', type=int, default=10)
 parser.add_argument('-ga', '--gamma', type=float, default=0.9)
@@ -135,22 +175,34 @@ parser.add_argument('-p', '--dropout', type=float, default=-1.0)
 parser.add_argument('-rc', '--add_residual_connections', type=bool, default=True)
 parser.add_argument('-bm', '--bound_multiplier', type=int, default=1)
 parser.add_argument('-dq', '--dequantize', type=bool, default=False,
-                        help='do we dequantize the pixels? performs uniform dequantization')
+                    help='do we dequantize the pixels? performs uniform dequantization')
 parser.add_argument('-ds', '--discretized', type=bool, default=False,
                     help='Discretized model')
 parser.add_argument('-w', '--step_weights', type=list_str_to_list, default='[1]',
                     help='Weights for each step of multistep NITS')
 parser.add_argument('--scarf', action="store_true")
-parser.add_argument('--bounds',type=list_str_to_list,default='[-10,10]')
+parser.add_argument('--bounds', type=list_str_to_list, default='[-10,10]')
+parser.add_argument('--conditional_dim', type=int, default=None)
 args = parser.parse_args()
-lr_grid = [2e-4,5e-4,1e-3]
-hidden_dim_grid = [128,256,512,1024]
+conditional = args.conditional_dim is not None
+lr_grid = [5e-3]
+hidden_dim_grid = [256]
+nr_blocks_grid = [8]
+polyak_decay_grid = [0.9]
+batch_size_grid = [20]
 max_vals_ll = []
-for lr in itertools.product(lr_grid):
-    model_extra_string = f'lr_{lr}_{args.nits_arch}_bounds{args.bounds}'
+lasts_train_ll = []
+model_names = []
+for lr, hidden_dim, nr_blocks, polyak_decay, bs in itertools.product(lr_grid, hidden_dim_grid, nr_blocks_grid,
+                                                                     polyak_decay_grid, batch_size_grid):
+    model_extra_string = f'lr_{lr}_hd_{hidden_dim}_nr_{nr_blocks}_pd_{polyak_decay}_bs_{bs}'
+    model_names.append(model_extra_string)
     print(model_extra_string)
     args.learning_rate = lr
-
+    args.hidden_dim = hidden_dim
+    args.n_residual_blocks = nr_blocks
+    args.polyak_decay = polyak_decay
+    args.batch_size = bs
     step_weights = np.array(args.step_weights)
     step_weights = step_weights / (np.sum(step_weights) + 1e-7)
 
@@ -190,6 +242,7 @@ for lr in itertools.product(lr_grid):
         default_dropout = 0.2
     elif args.dataset == 'antenna':
         data_path = r'../etof_folder_git/AntennaDesign_data/newdata_dB.npz'
+        assert os.path.exists(data_path)
         data_tmp = np.load(data_path)
         data = miniboone.MINIBOONE()
         data.Data = data_tmp
@@ -202,18 +255,15 @@ for lr in itertools.product(lr_grid):
         data.trn.x = train_params_scaled.astype(np.float32)
         data.val.x = val_params_scaled.astype(np.float32)
         data.tst.x = test_params_scaled.astype(np.float32)
-        args.batch_size = 50
-        args.hidden_dim = 256
         default_dropout = 0
-    model_extra_string = model_extra_string + f'_hidden_dim_{args.hidden_dim}'
     args.patience = args.patience if args.patience >= 0 else default_patience
     args.dropout = args.dropout if args.dropout >= 0.0 else default_dropout
     print(args)
 
     d = data.trn.x.shape[1]
 
-    max_val = max(data.trn.x.max(), data.val.x.max(), data.tst.x.max()) # args.bounds[1]
-    min_val = min(data.trn.x.min(), data.val.x.min(), data.tst.x.min()) # args.bounds[0]
+    max_val = args.bounds[1]  # max(data.trn.x.max(), data.val.x.max(), data.tst.x.max())
+    min_val = args.bounds[0]  # min(data.trn.x.min(), data.val.x.min(), data.tst.x.min())
     max_val, min_val = torch.tensor(max_val).to(device).float(), torch.tensor(min_val).to(device).float()
 
     max_val *= args.bound_multiplier
@@ -236,20 +286,23 @@ for lr in itertools.product(lr_grid):
         use_batch_norm=use_batch_norm,
         zero_initialization=zero_initialization,
         weight_norm=weight_norm,
-        nits_input_dim=nits_input_dim).to(device)
+        nits_input_dim=nits_input_dim,
+        conditional=conditional,
+        conditional_dim=args.conditional_dim).to(device)
 
     shadow = Model(
-                d=d,
-                rotate=args.rotate,
-                nits_model=nits_model,
-                n_residual_blocks=args.n_residual_blocks,
-                hidden_dim=args.hidden_dim,
-                dropout_probability=args.dropout,
-                use_batch_norm=use_batch_norm,
-                zero_initialization=zero_initialization,
-                weight_norm=weight_norm,
-                nits_input_dim=nits_input_dim
-            ).to(device)
+        d=d,
+        rotate=args.rotate,
+        nits_model=nits_model,
+        n_residual_blocks=args.n_residual_blocks,
+        hidden_dim=args.hidden_dim,
+        dropout_probability=args.dropout,
+        use_batch_norm=use_batch_norm,
+        zero_initialization=zero_initialization,
+        weight_norm=weight_norm,
+        nits_input_dim=nits_input_dim,
+        conditional=conditional,
+        conditional_dim=args.conditional_dim).to(device)
 
     # initialize weight norm
     if weight_norm:
@@ -259,36 +312,33 @@ for lr in itertools.product(lr_grid):
                 break
 
     model = EMA(model, shadow, decay=args.polyak_decay).to(device)
-    # n = 500
+    # n = 5000
     # vv = np.linspace(-4, 4, num=7000)
-    # paths = sorted(glob.glob('models/ANTmodel_*_1024.pth'))
+    # path = 'models\\ANT_model_lr_0.0005_hd_256_nr_8_pd_0.9_bs_20.pth'
     # distances = []
     # # correlation_eval(model,data,n)
     # # kl_eval(model,data,n)
-    # for path in paths:
-    #     print(path)
-    #     folder_to_save = path.split('\\')[1][:-4]
-    #     path_to_save = f'figures/{folder_to_save}'
-    #     Path(path_to_save).mkdir(parents=True, exist_ok=True)
-    #     model.load_state_dict(torch.load(path,map_location=device))
-    #     real = torch.Tensor(data.val.x)
-    #     dict_prints = {0: 'generated sample', 1: 'real sample'}
-    #     smp = model.model.sample(n, device)
-    #     calc_corr_cov(smp, data, path_to_save)
-    #     for feature in range(d):
-    #         plt.figure()
-    #         for i,example in enumerate([smp,torch.Tensor(real)]):
-    #             kde = gaussian_kde(example[:,feature]).pdf(vv)
-    #             plt.plot(vv, kde,'.', label=f'pdf {dict_prints[i]}')
-    #         plt.xlabel('feature value')
-    #         plt.ylabel('pdf')
-    #         plt.title(f'pdf comparison NITS (generated {n} samples) vs train data for feature no. {feature}')
-    #         plt.legend()
-    #     plt.show()
-    #         path_to_save_pdf = f'{path_to_save}/pdf_feature_{feature}.png'
-    #         plt.savefig(path_to_save_pdf)
-
-
+    # print(path)
+    # folder_to_save = path.split('\\')[1][:-4]
+    # path_to_save = f'figures/{folder_to_save}'
+    # Path(path_to_save).mkdir(parents=True, exist_ok=True)
+    # model.load_state_dict(torch.load(path,map_location=device))
+    # real = torch.Tensor(data.trn.x)
+    # dict_prints = {0: 'generated sample', 1: 'real sample'}
+    # smp = model.model.sample(n, device)
+    # calc_corr_cov(smp, data, path_to_save)
+    # for feature in range(d):
+    #     plt.figure()
+    #     for i,example in enumerate([smp,torch.Tensor(real)]):
+    #         kde = gaussian_kde(example[:,feature]).pdf(vv)
+    #         plt.plot(vv, kde,'.', label=f'pdf {dict_prints[i]}')
+    #     plt.xlabel('feature value')
+    #     plt.ylabel('pdf')
+    #     plt.title(f'pdf comparison NITS (generated {n} samples) vs train data for feature no. {feature}')
+    #     plt.legend()
+    # plt.show()
+    # path_to_save_pdf = f'{path_to_save}/pdf_feature_{feature}.png'
+    # plt.savefig(path_to_save_pdf)
 
     # print number of parameters
     print('number of model parameters:', sum([np.prod(p.size()) for p in model.parameters()]))
@@ -300,12 +350,13 @@ for lr in itertools.product(lr_grid):
     epoch = 0
     train_ll = 0.
     max_val_ll = -np.inf
-    loss_op = lambda real, params: cnn_nits_loss(real, params, nits_model, discretized=args.discretized, dequantize=args.dequantize)
+    loss_op = lambda real, params: cnn_nits_loss(real, params, nits_model, discretized=args.discretized,
+                                                 dequantize=args.dequantize)
     patience = args.patience
     keep_training = True
     start_time = time.time()
     while keep_training:
-        print('epoch', epoch, 'time [min]', round((time.time() - start_time)/60) , 'lr', optim.param_groups[0]['lr'])
+        print('epoch', epoch, 'time [min]', round((time.time() - start_time) / 60), 'lr', optim.param_groups[0]['lr'])
         model.train()
         for i, x in enumerate(create_batcher(data.trn.x, batch_size=args.batch_size)):
             ll = model(x).sum()
@@ -339,12 +390,14 @@ for lr in itertools.product(lr_grid):
                 max_val_ll = ema_val_ll
             else:
                 patience -= 1
-            print('Patience = ',patience)
-            if patience <= np.ceil(args.patience/2):
+            print('Patience = ', patience)
+            if patience <= np.ceil(args.patience / 2):
                 scheduler.step()
             if patience == 0:
-                print("Patience reached zero. max_val_ll stayed at {:.3f} for {:d} iterations.".format(max_val_ll, args.patience))
+                print("Patience reached zero. max_val_ll stayed at {:.3f} for {:d} iterations.".format(max_val_ll,
+                                                                                                       args.patience))
                 max_vals_ll.append(max_val_ll)
+                lasts_train_ll.append(train_ll)
                 keep_training = False
 
             with torch.no_grad():
@@ -378,7 +431,11 @@ for lr in itertools.product(lr_grid):
 
         if epoch % (print_every * 10) == 0:
             print(args)
-    dict_to_print = {lr:max_val for lr,max_val in zip(lr_grid,max_vals_ll)}
-    print(dict_to_print)
-    print(f'saving model for:\n{args}')
-    torch.save(model.state_dict(), f'models\\ANT_model_{model_extra_string}.pth')
+dict_to_print = {model_extra_string: (np.round(max_val, 3), np.round(last_train, 3)) for
+                 model_extra_string, max_val, last_train in zip(model_names, max_vals_ll, lasts_train_ll)}
+min_idx_val = np.argmin(max_vals_ll)
+min_idx_train = np.argmin(lasts_train_ll)
+print(f'best model according to val set: {model_names[min_idx_val]}')
+print(f'best model according to train set: {model_names[min_idx_train]}')
+print('dict_to_print:', dict_to_print)
+# torch.save(model.state_dict(), f'models\\ANT_model_{model_extra_string}.pth')
