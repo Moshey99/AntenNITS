@@ -361,12 +361,12 @@ class Model(nn.Module):
         new_params = torch.cat([A, b, reshaped_params[:, :, 2:]], axis=2)
         return new_params.reshape(-1, self.nits_model.tot_params)
 
-    def forward(self, x):
-        ll = self.pdf(x).log().sum()
+    def forward(self, x, condition = None):
+        ll = self.pdf(x,condition).log().sum()
 
         return ll
 
-    def sample(self, n,device):
+    def sample(self, n, device, condition=None):
         with torch.no_grad():
             data = torch.zeros((n, self.d), device=device)
 
@@ -375,7 +375,7 @@ class Model(nn.Module):
                 x_proj = self.proj(data)
 
                 # obtain parameters
-                params = self.mlp(data)
+                params = self.mlp(data,condition)
 
                 sample = self.nits_model.sample(1, params)
                 data[:, i] = sample[:, i]
@@ -385,7 +385,7 @@ class Model(nn.Module):
 
         return data
 
-    def pdf(self, x):
+    def pdf(self, x,condition=None):
         if hasattr(self, 'normalizer'):
             x = self.normalizer(x)
 
@@ -393,7 +393,7 @@ class Model(nn.Module):
         x = self.proj(x)
 
         # obtain parameters
-        params = self.mlp(x)
+        params = self.mlp(x,condition)
 
         if hasattr(self, 'normalizer'):
             params = self.add_normalizer_weights(params)

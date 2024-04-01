@@ -4,6 +4,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F, init
 from torch.nn.utils import weight_norm as wn
+from nits.antenna_condition import gamma_radiation_condition
 
 # parts adapted from https://github.com/conormdurkan/autoregressive-energy-machines
 
@@ -305,7 +306,7 @@ class ResidualMADE(nn.Module):
         self.input_dim = input_dim
         self.output_dim_multiplier = output_dim_multiplier
         self.conditional = conditional
-
+        self.activation = activation
         self.initial_layer = MaskedLinear(
             input_dim,
             hidden_dim,
@@ -315,7 +316,8 @@ class ResidualMADE(nn.Module):
         )
         if conditional:
             assert conditioning_dim is not None, 'Dimension of condition variables must be specified.'
-            self.conditional_layer = nn.Linear(conditioning_dim, hidden_dim)
+            self.condition_backbone = gamma_radiation_condition(condition_dim=conditioning_dim)
+            self.conditional_layers = nn.Sequential(self.condition_backbone, nn.ELU(), nn.Linear(conditioning_dim, hidden_dim))
         self.blocks = nn.ModuleList(
             [MaskedResidualBlock(
                 features=hidden_dim,
@@ -336,12 +338,11 @@ class ResidualMADE(nn.Module):
             weight_norm=weight_norm
         )
 
-        self.activation = activation
 
     def forward(self, x, conditional_inputs=None):
         x = self.initial_layer(x)
         if self.conditional:
-            x += self.conditional_layer(conditional_inputs)
+            x += self.conditional_layers(conditional_inputs)
         for block in self.blocks:
             x = block(x)
         x = self.activation(x)
