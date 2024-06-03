@@ -316,8 +316,8 @@ class ResidualMADE(nn.Module):
         )
         if conditional:
             assert conditioning_dim is not None, 'Dimension of condition variables must be specified.'
-            self.condition_backbone = gamma_radiation_condition(condition_dim=conditioning_dim)
-            self.conditional_layers = nn.Sequential(self.condition_backbone, nn.ELU(), nn.Linear(conditioning_dim, hidden_dim))
+        self.condition_backbone = gamma_radiation_condition(condition_dim=conditioning_dim)
+        self.conditional_layers = nn.Sequential(self.condition_backbone, nn.ELU(), nn.Linear(conditioning_dim, hidden_dim))
         self.blocks = nn.ModuleList(
             [MaskedResidualBlock(
                 features=hidden_dim,

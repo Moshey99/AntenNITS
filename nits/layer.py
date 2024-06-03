@@ -82,9 +82,9 @@ class EMA(nn.Module):
 
     def forward(self, *inputs):
         if self.training:
-            return self.model(*inputs)
+            return self.model(*inputs).sum()
         else:
-            return self.shadow(*inputs)
+            return self.shadow(*inputs).sum()
         
 #     def __setattr__(self, attr):
 #         print(attr)
