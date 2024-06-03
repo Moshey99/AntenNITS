@@ -1,0 +1,25 @@
+{
+  "Task_Name": "Image Classification",
+
+  "DataPath": "C:\\Users\\moshey\\PycharmProjects\\etof_folder_git\\AntennaDesign_data\\data_10000x1\\data\\processed_data\\voxels",
+
+  "image_size": [291, 391],
+
+  "batch_size": 32,
+
+  "conv_layers": 3,
+
+  "hidden_layers": 2,
+
+  "kernel_size": 3,
+
+  "output_channels": 32,
+
+  "output_features": 64,
+
+  "lr": 0.001,
+
+  "weight_decay": 0,
+
+  "n_epochs": 25
+}
