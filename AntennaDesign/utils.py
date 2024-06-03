@@ -27,6 +27,9 @@ import open3d as o3d
 class DataPreprocessor:
     def __init__(self):
         self.num_data_points = 10000
+        a = np.load(r'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\processed_data\voxels\voxels_30.npy')
+        plt.imshow(a.squeeze().T)
+        plt.show()
         # self.geometry_preprocessor()
         # self.gamma_preprocessor()
         # self.radiation_preprocessor()
@@ -99,18 +102,17 @@ class DataPreprocessor:
         max_bound_org = np.array([54., 3.83, 42.5]) + voxel_size
         bad_indices = [3234]
         for i in range(10000):
-            if i==3234:
+            if i == 3234 or i == 9729:
                 continue
             mesh = o3d.io.read_triangle_mesh(
                 rf"C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{i}\Antenna_PEC_STEP.stl")
-            vg = o3d.geometry.VoxelGrid.create_from_triangle_mesh_within_bounds(mesh, voxel_size=voxel_size,
-                                                                                           min_bound=min_bound_org,
-                                                                                           max_bound=max_bound_org)
+            vg = o3d.geometry.VoxelGrid.create_from_triangle_mesh_within_bounds(
+                mesh, voxel_size=voxel_size, min_bound=min_bound_org, max_bound=max_bound_org)
             voxels = vg.get_voxels()
             indices = np.stack(list(vx.grid_index for vx in voxels))
-            quary_x = np.arange(min_bound_org[0]+0.5*voxel_size,max_bound_org[0],step=voxel_size)
+            quary_x = np.arange(min_bound_org[0]+0.5*voxel_size,max_bound_org[0], step=voxel_size)
             quary_y = [3.825000047683716]
-            quary_z = np.arange(min_bound_org[2]+0.5*voxel_size,max_bound_org[2],step=voxel_size)
+            quary_z = np.arange(min_bound_org[2]+0.5*voxel_size,max_bound_org[2], step=voxel_size)
             quary_array = np.zeros((len(quary_x), 1, len(quary_z)))
             start = time.time()
             for ii,x_val in enumerate(quary_x):
@@ -119,7 +121,8 @@ class DataPreprocessor:
                         ind = vg.get_voxel([x_val,y_val,z_val])
                         exists = np.any(np.all(indices == ind, axis=1))
                         quary_array[ii,jj,kk] = exists
-            np.save(os.path.join(r'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\processed_data\voxels', f'voxels_{i}.npy'), quary_array)
+            np.save(os.path.join(r'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\processed_data\voxels',
+                                 f'voxels_{i}.npy'), quary_array.astype(bool))
             print(f'saved antenna {i}. Process time was:', time.time() - start)
 
     def stp_to_stl(self):
