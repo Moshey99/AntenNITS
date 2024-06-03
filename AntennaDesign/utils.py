@@ -94,8 +94,6 @@ class DataPreprocessor:
         pass
 
     def geometry_preprocessor(self):
-        def get_voxel_batch(points):
-            return np.array([vg.get_voxel(point) for point in points])
         voxel_size = 0.125
         min_bound_org = np.array([5.4, 3.825, 6.375]) - voxel_size
         max_bound_org = np.array([54., 3.83, 42.5]) + voxel_size
@@ -121,35 +119,16 @@ class DataPreprocessor:
                         ind = vg.get_voxel([x_val,y_val,z_val])
                         exists = np.any(np.all(indices == ind, axis=1))
                         quary_array[ii,jj,kk] = exists
-            # start = time.time()
-            # grid_x, grid_y, grid_z = np.meshgrid(quary_x, quary_y, quary_z, indexing='ij')
-            # query_points = np.vstack([grid_x.ravel(), grid_y.ravel(), grid_z.ravel()]).T
-            # query_voxel_indices = get_voxel_batch(query_points)
-            # exists = np.any(np.all(query_voxel_indices[:, np.newaxis, :] == indices, axis=2), axis=1)
-            # quary_array = exists.reshape(len(quary_x), len(quary_y), len(quary_z))
             np.save(os.path.join(r'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\processed_data\voxels', f'voxels_{i}.npy'), quary_array)
             print(f'saved antenna {i}. Process time was:', time.time() - start)
-            # vg_plot = o3d.geometry.VoxelGrid.create_from_triangle_mesh(mesh, voxel_size=0.01)
-            # o3d.visualization.draw_geometries([vg_plot])
 
-
-        model_folder = 'C:\\Users\\moshey\\PycharmProjects\\etof_folder_git\\AntennaDesign_data\\data_10000x1\\data\\models'
+    def stp_to_stl(self):
         import trimesh
+        model_folder = 'C:\\Users\\moshey\\PycharmProjects\\etof_folder_git\\AntennaDesign_data\\data_10000x1\\data\\models'
         all =[]
-        for i in [9729]:
+        for i in range(10000):
             print('working on antenna number:', i + 1, 'out of:', self.num_data_points)
             stp_path = os.path.join(model_folder, f'{i}', 'Antenna_PEC_STEP.stp')
-            # is_exists = os.path.exists(stp_path)
-            # if is_exists:
-            #     print('stl file already exists')
-            # else:
-            #     print(f'STL FILE DOES NOT EXIT FOR ANTENNA NUMBER {i}')
-            # all.append(is_exists)
-            # if np.all(all):
-            #     print('All files exist!!!!!')
-            # else:
-            #     where = np.where(np.array(all) == False)
-            #     print(f'Antenna number {where} does not have an stl file')
             mesh = trimesh.Trimesh(**trimesh.interfaces.gmsh.load_gmsh(
                 file_name=stp_path, gmsh_args=[("Mesh.Algorithm", 1), ("Mesh.CharacteristicLengthFromCurvature", 1),
                                                ("General.NumThreads", 10),
