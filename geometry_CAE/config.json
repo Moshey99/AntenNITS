@@ -7,16 +7,6 @@
 
   "batch_size": 32,
 
-  "conv_layers": 3,
-
-  "hidden_layers": 2,
-
-  "kernel_size": 3,
-
-  "output_channels": 32,
-
-  "output_features": 64,
-
   "lr": 0.001,
 
   "weight_decay": 0,

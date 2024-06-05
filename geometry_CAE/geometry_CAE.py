@@ -8,7 +8,14 @@ import glob
 import matplotlib.pyplot as plt
 import numpy as np
 from random import shuffle
+from resnet_vae import ResNet_VAE
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
+
+def loss_function(reconstruction_loss, x, x_hat, mu, logvar):
+    recon_loss = reconstruction_loss(x, x_hat)
+    kl_loss = 0.5 * torch.mean(-1 - logvar + mu ** 2 + logvar.exp())
+    return kl_loss + recon_loss
+
 # Load Config files
 path = os.getcwd()
 config_path = os.path.join(path, 'config.json')
@@ -16,7 +23,7 @@ with open(config_path, 'r') as f:
     config = json.load(f)
 
 print("The Configuration Variables are:")
-print(config)
+print('Configuration: ', config)
 
 # Define Config variables
 image_size = config['image_size']
@@ -25,7 +32,6 @@ batch_size = config['batch_size']
 learning_rate = config['lr']
 weight_decay = config['weight_decay']
 epochs = config['n_epochs']
-
 print("\n____________________________________________________\n")
 print("\nLoading Dataset into DataLoader...")
 
@@ -35,6 +41,7 @@ shuffle(all_imgs)
 # Train Images
 train_imgs = all_imgs[:400]
 test_imgs = all_imgs[400:]
+
 
 
 # DataLoader Function
@@ -71,50 +78,19 @@ print("\n____________________________________________________\n")
 print("\nBuilding Convolutional AutoEncoder Network Model...")
 
 
-# Define Convolutional AutoEncoder Network
-class ConvAutoencoder(torch.nn.Module):
-    def __init__(self):
-        super(ConvAutoencoder, self).__init__()
-
-        self.encoder = torch.nn.Sequential(
-            torch.nn.Conv2d(1, 64, 3, stride=1, padding=1),  #
-            torch.nn.ReLU(True),
-            torch.nn.MaxPool2d(2, stride=1),
-            torch.nn.Conv2d(64, 16, 3, stride=1, padding=1),  # b, 8, 3, 3
-            torch.nn.ReLU(True),
-            torch.nn.MaxPool2d(2, stride=1)  # b, 8, 2, 2
-        )
-
-        self.decoder = torch.nn.Sequential(
-            torch.nn.Upsample(scale_factor=1, mode='nearest'),
-            torch.nn.Conv2d(16, 64, 3, stride=1, padding=1),  # b, 16, 10, 10
-            torch.nn.ReLU(True),
-            torch.nn.Upsample(scale_factor=1, mode='nearest'),
-            torch.nn.Conv2d(64, 1, 3, stride=1, padding=2),  # b, 8, 3, 3
-            torch.nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        coded = self.encoder(x)
-        decoded = self.decoder(coded)
-        return decoded
-
-
-print("\nConvolutional AutoEncoder Network Model Set!")
-
 print("\n____________________________________________________\n")
 
 # defining the device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # defining the model
-convAE_model = ConvAutoencoder().to(device)
+convAE_model = ResNet_VAE().to(device)
 
 # defining the optimizer
 optimizer = torch.optim.Adam(convAE_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
 # defining the loss function
-loss_function = torch.nn.MSELoss().to(device)
+recon_loss = torch.nn.BCELoss().to(device)
 
 print(convAE_model)
 print("____________________________________________________\n")
@@ -130,9 +106,9 @@ for epoch in range(epochs):
         img = X.to(device)
         img = torch.autograd.Variable(img)
 
-        recon = convAE_model(img)
+        recon, mu, logvar, latents = convAE_model(img, latent_vec=True)
 
-        loss = loss_function(recon, img)
+        loss = loss_function(recon_loss, recon, img, mu, logvar)
 
         # Backward Propagation
         optimizer.zero_grad()
@@ -158,64 +134,66 @@ plt.title('Convolutional AutoEncoder Training Loss Vs Epochs', fontsize=15)
 plt.show()
 
 print("\n____________________________________________________\n")
-
-print("PRINTING ORIGINAL IMAGES THAT TRAINED THE MODEL AND THEIR RECONSTRUCTIONS ...")
-
-# Print Some Reconstructions
-plt.figure(figsize=(23, 8))
-
-start = 4
-n_images = 5
-
-for i in range(n_images):
-    plt.subplot(1, n_images, i + 1)
-    plt.imshow(X[start + i + 1][0], cmap='gray')
-    plt.title('Training Image ' + str(i + 1), fontsize=15)
-    plt.axis("off")
-
-plt.figure(figsize=(23, 8))
-
-for i in range(n_images):
-    plt.subplot(1, n_images, i + 1)
-    pic = recon.cpu().data
-    plt.imshow(pic[start + i + 1][0], cmap='gray')
-    plt.title('Reconstructed Image ' + str(i + 1), fontsize=15)
-    plt.axis("off")
-
+torch.save(convAE_model.state_dict(), 'geometry_convVAE_model.pth')
+print("Model Saved Successfully!")
 print("\n____________________________________________________\n")
-
-print("\n____________________________________________________\n")
-
-# Reconstruct Images by passing Test images on Trained Model
-with torch.no_grad():
-    for Ts_X in test_set:
-        Ts_X = Ts_X.to(device)
-        Ts_recon = convAE_model(Ts_X)
-
-print("PRINTING TEST IMAGES AND THEIR RECONSTRUCTIONS ...")
-print("\n____________________________________________________\n")
-
-# Print Some Reconstructions
-plt.figure(figsize=(23, 8))
-
-start = 4
-n_images = 5
-
-for i in range(n_images):
-    plt.subplot(1, n_images, i + 1)
-    pic = Ts_X.cpu().data
-    plt.imshow(pic[start + i + 1][0], cmap='gray')
-    plt.title('Test Image ' + str(i + 1), fontsize=15)
-    plt.axis("off")
-
-plt.figure(figsize=(23, 8))
-
-for i in range(n_images):
-    plt.subplot(1, n_images, i + 1)
-    pic = Ts_recon.cpu().data
-    plt.imshow(pic[start + i + 1][0], cmap='gray')
-    plt.title('Reconstructed Image ' + str(i + 1), fontsize=15)
-    plt.axis("off")
-
-print("\n____________________________________________________\n")
+# print("PRINTING ORIGINAL IMAGES THAT TRAINED THE MODEL AND THEIR RECONSTRUCTIONS ...")
+#
+# # Print Some Reconstructions
+# plt.figure(figsize=(23, 8))
+#
+# start = 4
+# n_images = 5
+#
+# for i in range(n_images):
+#     plt.subplot(1, n_images, i + 1)
+#     plt.imshow(X[start + i + 1][0], cmap='gray')
+#     plt.title('Training Image ' + str(i + 1), fontsize=15)
+#     plt.axis("off")
+#
+# plt.figure(figsize=(23, 8))
+#
+# for i in range(n_images):
+#     plt.subplot(1, n_images, i + 1)
+#     pic = recon.cpu().data
+#     plt.imshow(pic[start + i + 1][0], cmap='gray')
+#     plt.title('Reconstructed Image ' + str(i + 1), fontsize=15)
+#     plt.axis("off")
+#
+# print("\n____________________________________________________\n")
+#
+# print("\n____________________________________________________\n")
+#
+# # Reconstruct Images by passing Test images on Trained Model
+# with torch.no_grad():
+#     for Ts_X in test_set:
+#         Ts_X = Ts_X.to(device)
+#         Ts_recon = convAE_model(Ts_X)
+#
+# print("PRINTING TEST IMAGES AND THEIR RECONSTRUCTIONS ...")
+# print("\n____________________________________________________\n")
+#
+# # Print Some Reconstructions
+# plt.figure(figsize=(23, 8))
+#
+# start = 4
+# n_images = 5
+#
+# for i in range(n_images):
+#     plt.subplot(1, n_images, i + 1)
+#     pic = Ts_X.cpu().data
+#     plt.imshow(pic[start + i + 1][0], cmap='gray')
+#     plt.title('Test Image ' + str(i + 1), fontsize=15)
+#     plt.axis("off")
+#
+# plt.figure(figsize=(23, 8))
+#
+# for i in range(n_images):
+#     plt.subplot(1, n_images, i + 1)
+#     pic = Ts_recon.cpu().data
+#     plt.imshow(pic[start + i + 1][0], cmap='gray')
+#     plt.title('Reconstructed Image ' + str(i + 1), fontsize=15)
+#     plt.axis("off")
+#
+# print("\n____________________________________________________\n")
 
