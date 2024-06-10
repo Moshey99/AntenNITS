@@ -27,10 +27,7 @@ import open3d as o3d
 class DataPreprocessor:
     def __init__(self):
         self.num_data_points = 10000
-        a = np.load(r'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\processed_data\voxels\voxels_30.npy')
-        plt.imshow(a.squeeze().T)
-        plt.show()
-        # self.geometry_preprocessor()
+        self.geometry_preprocessor()
         # self.gamma_preprocessor()
         # self.radiation_preprocessor()
 
@@ -100,12 +97,15 @@ class DataPreprocessor:
         voxel_size = 0.125
         min_bound_org = np.array([5.4, 3.825, 6.375]) - voxel_size
         max_bound_org = np.array([54., 3.83, 42.5]) + voxel_size
-        bad_indices = [3234]
-        for i in range(10000):
+        for i in range(2335,10000):
             if i == 3234 or i == 9729:
                 continue
+            # a = np.load(r'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\processed_data\voxels\voxels_2050.npy')
+            # plt.imshow(a[:,0,:].T)
+            # plt.show()
             mesh = o3d.io.read_triangle_mesh(
                 rf"C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{i}\Antenna_PEC_STEP.stl")
+            # o3d.visualization.draw_geometries([mesh])
             vg = o3d.geometry.VoxelGrid.create_from_triangle_mesh_within_bounds(
                 mesh, voxel_size=voxel_size, min_bound=min_bound_org, max_bound=max_bound_org)
             voxels = vg.get_voxels()

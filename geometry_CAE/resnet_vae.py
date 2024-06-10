@@ -37,7 +37,7 @@ class AbstractAutoEncoder(nn.Module):
 class ResNet_VAE(AbstractAutoEncoder):
     def __init__(
             self, recon_loss_type=None, fc_hidden1=1024,
-            fc_hidden2=768, drop_p=0.3, CNN_embed_dim=256):
+            fc_hidden2=768, drop_p=0.3, CNN_embed_dim=512):
         super(ResNet_VAE, self).__init__()
         self.recon_loss_type = recon_loss_type
         self.fc_hidden1, self.fc_hidden2, self.CNN_embed_dim = fc_hidden1, fc_hidden2, CNN_embed_dim
@@ -49,7 +49,7 @@ class ResNet_VAE(AbstractAutoEncoder):
         self.pd1, self.pd2, self.pd3, self.pd4 = (0, 0), (0, 0), (0, 0), (0, 0)  # 2d padding
 
         # encoding components
-        resnet = models.resnet18(pretrained=True)
+        resnet = models.resnet18(weights='ResNet18_Weights.DEFAULT')
         modules = list(resnet.children())[:-1]  # delete the last fc layer.
         self.resnet = nn.Sequential(*modules)
         self.resnet[0] = nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
