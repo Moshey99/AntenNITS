@@ -2,6 +2,8 @@
 import itertools
 import os
 import json
+import random
+
 import torch
 import torch.nn as nn
 import torchvision
@@ -9,7 +11,6 @@ from PIL import Image
 import glob
 import matplotlib.pyplot as plt
 import numpy as np
-from random import shuffle
 from resnet_vae import ResNet_VAE
 import argparse
 import pytorch_msssim
@@ -21,31 +22,36 @@ parser = argparse.ArgumentParser(description='Convolutional AutoEncoder for Geom
 parser.add_argument('--device', type=int, nargs='+', default=[2], help='Device to run the model on')
 parser.add_argument('--lrs', type=float, nargs='+', default=[0.0005], help='Learning Rates to try')
 parser.add_argument('--bs', type=int, nargs='+', default=[32], help='Batch Sizes to try')
-parser.add_argument('--embed_sizes', type=int, nargs='+', default=[1024], help='Embedding Sizes to try')
+parser.add_argument('--embed_sizes', type=int, nargs='+', default=[4096], help='Embedding Sizes to try')
 parser.add_argument('--gamma', type=float, default=0.9, help='Gamma for StepLR')
 parser.add_argument('--patiance', type=int, default=10, help='Patiance for Early Stopping')
 parser.add_argument('--checkpoint_folder', type=str, default='checkpoints', help='Folder to save checkpoints')
 parser.add_argument('--extra_string', type=str, default='', help='Extra string to add to the model name')
 parser.add_argument('--split_ratio', type=float, default=0.9, help='Ratio to split the dataset')
+parser.add_argument('--weight_mse', type=float, default=0.5, help='Weight for MSE Loss')
+parser.add_argument('--images_folder', type=str, default='images', help='Folder to save images')
+parser.add_argument('--kl_weight', type=float, default=0.01, help='Weight for KL Loss')
 args = parser.parse_args()
+print(args)
 
-
-class bce_msssim_combined_mag_loss(nn.Module):
-    def __init__(self):
-        super(bce_msssim_combined_mag_loss, self).__init__()
-        self.bce_loss = nn.BCELoss()
-        self.msssim_loss = pytorch_msssim.MSSSIM(radiation_range=[0, 1])
+class mse_msssim_combined_mag_loss(nn.Module):
+    def __init__(self, weight = 0.5):
+        super(mse_msssim_combined_mag_loss, self).__init__()
+        self.mse_loss = nn.MSELoss()
+        self.ssim_loss = pytorch_msssim.SSIM()
+        assert 0 <= weight <= 1, 'Weight should be between 0 and 1'
+        self.weight = weight
 
     def forward(self, pred, target):
-        bce_loss = self.bce_loss(pred, target)
-        msssim_loss = self.msssim_loss(pred, target)
-        return 0.8*bce_loss + 0.2*msssim_loss, bce_loss, msssim_loss
+        mse_loss = self.mse_loss(pred.view(pred.size(0), -1), target.view(target.size(0), -1))
+        ssim_loss = -self.ssim_loss(pred, target)
+        return self.weight * mse_loss + (1 - self.weight) * ssim_loss, mse_loss, ssim_loss
 
 
-def loss_function(reconstruction_loss, target, pred, mu, logvar, kl_factor=0.001):
-    recon_loss, bce, msssim = reconstruction_loss(pred, target)
+def loss_function(reconstruction_loss, target, pred, mu, logvar, kl_weight=0.01):
+    recon_loss, mse, ssim = reconstruction_loss(pred, target)
     kl_loss = 0.5 * torch.mean(-1 - logvar + mu ** 2 + logvar.exp())
-    return kl_factor * kl_loss + recon_loss, (kl_loss.item(), bce.item(), msssim.item())
+    return kl_weight * kl_loss + recon_loss, (kl_loss.item(), mse.item(), ssim.item())
 
 
 # Load Config files
@@ -73,23 +79,25 @@ print("\n____________________________________________________\n")
 print("\nLoading Dataset into DataLoader...")
 
 all_imgs = glob.glob(data_path + '/*.npy')
-shuffle(all_imgs)
+random.Random(42).shuffle(all_imgs)
 
 # Train Images
 split_ratio = args.split_ratio
 split_index = int(len(all_imgs) * split_ratio)
-train_imgs = all_imgs[:10]
-test_imgs = all_imgs[10:15]
+train_imgs = all_imgs[:split_index]
+test_imgs = all_imgs[split_index:]
 
-
+def standardize(X, avg=0.15446, std= 0.35994):
+    return (X - avg) / std
 def evaluate(model, test_loader, loss_fn, device):
     model.eval()
     losses = []
     with torch.no_grad():
         for X in test_loader:
+            X = standardize(X)
             im = X.to(device)
             recon, mu, logvar, latents = model(im, latent_vec=True)
-            loss, _ = loss_fn(bce_msssim_combined_mag_loss(), im, recon, mu, logvar)
+            loss, _ = loss_fn(mse_msssim_combined_mag_loss(weight=args.weight_mse), im, recon, mu, logvar)
             losses.append(loss.item())
     return np.mean(losses), np.std(losses)
 
@@ -152,6 +160,7 @@ for learning_rate, batch_size, embed_size in itertools.product(lrs, bs_sizes, em
     print("\n____________________________________________________\n")
     train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(imagePrep(test_imgs, dataset_transform), batch_size=batch_size)
+
     # defining the device
     if torch.cuda.is_available():
         device = torch.device(f'cuda:{args.device[0]}')
@@ -161,7 +170,7 @@ for learning_rate, batch_size, embed_size in itertools.product(lrs, bs_sizes, em
         convAE_model = ResNet_VAE(CNN_embed_dim=embed_size).to(device)
     if load_model:
         convAE_model = torch.nn.DataParallel(ResNet_VAE(CNN_embed_dim=embed_size), device_ids=args.device).to(device)
-        convAE_model.load_state_dict(torch.load('geometry_convVAE_model_0.0005_32_1024mse.pth', map_location=device))
+        convAE_model.load_state_dict(torch.load('geometry_convVAE_model_lr0.0005_bs32_ems4096_exs_kl0.001_mse1_epo5.pth', map_location=device))
     optimizer = torch.optim.Adam(convAE_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=args.gamma)
 
@@ -178,22 +187,34 @@ for learning_rate, batch_size, embed_size in itertools.product(lrs, bs_sizes, em
         train_loss = 0
         debug_losses = np.array([0, 0, 0], dtype=np.float64)
         for i, X in enumerate(train_loader):
+            X = standardize(X)
             img = X.to(device)
             recon, mu, logvar, latents = convAE_model(img, latent_vec=True)
+            if args.images_folder is not None and i == 0:
+                original_img = img.detach().cpu().numpy()[1][0]
+                reconstructed_img = recon.detach().cpu().numpy()[1][0]
+                plt.figure()
+                plt.imshow(np.hstack((original_img, reconstructed_img)), cmap='gray')
+                plt.title('Original Image | Reconstructed Image')
+                image_path = os.path.join(args.images_folder, model_name.replace('.pth', f'_epoch_{epoch}_image.png'))
+                plt.savefig(image_path)
+                plt.clf()
+                print(f"Image Saved at {image_path}")
             # plt.imshow(recon.cpu().data[1][0], cmap='gray')
             # plt.title('Reconstructed Image')
             # plt.figure()
             # plt.imshow(img.cpu().data[1][0], cmap='gray')
             # plt.title('Original Image')
             # plt.show()
-            loss, (kl, huber, msssim) = loss_function(bce_msssim_combined_mag_loss(), target=img, pred=recon, mu=mu, logvar=logvar)
+            rec_loss = mse_msssim_combined_mag_loss(weight=args.weight_mse)
+            loss, (kl, mse, ssim) = loss_function(rec_loss, target=img, pred=recon, mu=mu, logvar=logvar, kl_weight=args.kl_weight)
 
             # Backward Propagation
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
-            debug_losses += np.array([kl, huber, msssim])
+            debug_losses += np.array([kl, mse, ssim])
         print('Evaluating...')
         test_loss, test_loss_std = evaluate(model=convAE_model, test_loader=test_loader, loss_fn=loss_function, device=device)
         train_loss = train_loss / len(train_loader)
@@ -209,13 +230,16 @@ for learning_rate, batch_size, embed_size in itertools.product(lrs, bs_sizes, em
             if patiance == 0:
                 print(f"Early Stopping at Epoch: {epoch}")
                 break
-        print(f"KL Loss: {debug_losses[0]} | BCE Loss: {debug_losses[1]} | MSSSIM Loss: {debug_losses[2]}")
+        print(f"KL Loss: {debug_losses[0]} | MSE Loss: {debug_losses[1]} | SSIM Loss: {debug_losses[2]}")
         print("Train Loss: {:.4f}".format(train_loss), f" | Test Loss: {np.round(test_loss,4)} +- {np.round(test_loss_std,4)}, Best Loss: {np.round(best_loss,4)}\n")
         if (epoch+5) % 10 == 0 and args.checkpoint_folder is not None:
-            torch.save(convAE_model.state_dict(), os.path.join(args.checkpoint_folder,model_name.replace('.pth', f'_epo{epoch}.pth')))
+            checkpoint_dir = os.path.join(args.checkpoint_folder, model_name.replace('.pth', f'_epo{epoch}.pth'))
+            torch.save(convAE_model.state_dict(), checkpoint_dir)
+            print(f"Model Saved at Epoch {epoch} in {checkpoint_dir}")
     model_loss_dicts[model_name] = best_loss.item()
     model_weights_dicts[model_name] = best_weights
     torch.save(best_weights, model_name)
+
     print("\n____________________________________________________\n")
 print(model_loss_dicts)
 best_model = min(model_loss_dicts, key=model_loss_dicts.get)

@@ -109,8 +109,7 @@ class ResNet_VAE(AbstractAutoEncoder):
         self.convTrans8 = nn.Sequential(
             nn.ConvTranspose2d(in_channels=8, out_channels=1, kernel_size=self.k2, stride=self.s2,
                                padding=self.pd2),
-            nn.BatchNorm2d(1, momentum=0.01),
-            nn.Sigmoid()  # y = (y1, y2, y3) \in [0 ,1]^3
+            nn.BatchNorm2d(1, momentum=0.01),  # y = (y1, y2, y3) \in [0 ,1]^3
         )
 
     def encode(self, x):
@@ -145,6 +144,7 @@ class ResNet_VAE(AbstractAutoEncoder):
         x = self.convTrans6(x)
         x = self.convTrans7(x)
         x = self.convTrans8(x)
+        x = 4 * torch.sigmoid(x) - 1
         x = F.interpolate(x, size=self.shape, mode='bilinear')
         return x
 
