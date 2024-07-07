@@ -36,11 +36,11 @@ class AbstractAutoEncoder(nn.Module):
 
 class ResNet_VAE(AbstractAutoEncoder):
     def __init__(
-            self, recon_loss_type=None, fc_hidden1=1024,
-            fc_hidden2=768, drop_p=0.3, CNN_embed_dim=512):
+            self, recon_loss_type=None, fc_hidden1=512,
+            drop_p=0.3, CNN_embed_dim=512):
         super(ResNet_VAE, self).__init__()
         self.recon_loss_type = recon_loss_type
-        self.fc_hidden1, self.fc_hidden2, self.CNN_embed_dim = fc_hidden1, fc_hidden2, CNN_embed_dim
+        self.fc_hidden1, self.CNN_embed_dim = fc_hidden1, CNN_embed_dim
 
         # CNN architechtures
         self.ch1, self.ch2, self.ch3, self.ch4 = 16, 32, 64, 128
@@ -55,16 +55,14 @@ class ResNet_VAE(AbstractAutoEncoder):
         self.resnet[0] = nn.Conv2d(1, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
         self.fc1 = nn.Linear(resnet.fc.in_features, self.fc_hidden1)
         self.bn1 = nn.BatchNorm1d(self.fc_hidden1, momentum=0.01)
-        self.fc2 = nn.Linear(self.fc_hidden1, self.fc_hidden2)
-        self.bn2 = nn.BatchNorm1d(self.fc_hidden2, momentum=0.01)
         # Latent vectors mu and sigma
-        self.fc3_mu = nn.Linear(self.fc_hidden2, self.CNN_embed_dim)  # output = CNN embedding latent variables
-        self.fc3_logvar = nn.Linear(self.fc_hidden2, self.CNN_embed_dim)  # output = CNN embedding latent variables
+        self.fc2_mu = nn.Linear(self.fc_hidden1, self.CNN_embed_dim)  # output = CNN embedding latent variables
+        self.fc2_logvar = nn.Linear(self.fc_hidden1, self.CNN_embed_dim)  # output = CNN embedding latent variables
 
         # Sampling vector
-        self.fc4 = nn.Linear(self.CNN_embed_dim, self.fc_hidden2)
-        self.fc_bn4 = nn.BatchNorm1d(self.fc_hidden2)
-        self.fc5 = nn.Linear(self.fc_hidden2, 64 * 4 * 4)
+        self.fc4 = nn.Linear(self.CNN_embed_dim, self.fc_hidden1)
+        self.fc_bn4 = nn.BatchNorm1d(self.fc_hidden1)
+        self.fc5 = nn.Linear(self.fc_hidden1, 64 * 4 * 4)
         self.fc_bn5 = nn.BatchNorm1d(64 * 4 * 4)
         self.relu = nn.ReLU(inplace=True)
 
@@ -116,14 +114,11 @@ class ResNet_VAE(AbstractAutoEncoder):
         self.shape = tuple(x.shape[2:])
         x = self.resnet(x)  # ResNet
         x = x.view(x.size(0), -1)  # flatten output of conv
-
         # FC layers
         x = self.bn1(self.fc1(x))
         x = self.relu(x)
-        x = self.bn2(self.fc2(x))
-        x = self.relu(x)
         # x = F.dropout(x, p=self.drop_p, training=self.training)
-        mu, logvar = self.fc3_mu(x), self.fc3_logvar(x)
+        mu, logvar = self.fc2_mu(x), self.fc2_logvar(x)
         return mu, logvar
 
     def reparameterize(self, mu, logvar):
