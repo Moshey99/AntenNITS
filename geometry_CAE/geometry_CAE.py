@@ -3,7 +3,7 @@ import itertools
 import os
 import json
 import random
-
+import pickle
 import torch
 import torch.nn as nn
 import torchvision
@@ -14,6 +14,7 @@ import numpy as np
 from resnet_vae import ResNet_VAE
 import argparse
 import pytorch_msssim
+from sklearn.decomposition import PCA
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
@@ -34,8 +35,9 @@ parser.add_argument('--kl_weight', type=float, default=0.01, help='Weight for KL
 args = parser.parse_args()
 print(args)
 
+
 class mse_msssim_combined_mag_loss(nn.Module):
-    def __init__(self, weight = 0.5):
+    def __init__(self, weight=0.5):
         super(mse_msssim_combined_mag_loss, self).__init__()
         self.mse_loss = nn.MSELoss()
         self.ssim_loss = pytorch_msssim.SSIM()
@@ -87,8 +89,17 @@ split_index = int(len(all_imgs) * split_ratio)
 train_imgs = all_imgs[:split_index]
 test_imgs = all_imgs[split_index:]
 
-def standardize(X, avg=0.15446, std= 0.35994):
+
+def binarize(img, threshold=0.5):
+    img[img < threshold] = 0
+    img[img >= threshold] = 1
+    return img
+
+
+def standardize(X, avg=0.15446, std=0.35994):
     return (X - avg) / std
+
+
 def evaluate(model, test_loader, loss_fn, device):
     model.eval()
     losses = []
@@ -137,13 +148,29 @@ dataset_transform = torchvision.transforms.Compose([torchvision.transforms.Grays
 
 # Apply Transformations to Data
 train_set = imagePrep(train_imgs, dataset_transform)
-train_set_rotate = imagePrep(train_imgs, dataset_transform, rotate=True)
-train_set_flip_horizontal = imagePrep(train_imgs, dataset_transform, flip_horizontal=True)
-train_set_flip_vertical = imagePrep(train_imgs, dataset_transform, flip_vertical=True)
-train_set_flip_both = imagePrep(train_imgs, dataset_transform, flip_horizontal=True, flip_vertical=True)
-train_set = torch.utils.data.ConcatDataset(
-    [train_set, train_set_rotate, train_set_flip_horizontal, train_set_flip_vertical, train_set_flip_both])
 
+pca_data_loader = torch.utils.data.DataLoader(train_set, batch_size=len(train_set), shuffle=True)
+for X in pca_data_loader:
+    print('Data Shape: ', X.shape, '')
+    X = X.view(X.size(0), -1)
+    pca = PCA(n_components=3000)
+    print('Fitting PCA...')
+    pca.fit(X.detach().cpu().numpy())
+    pickle.dump(pca, open('pca_model.pkl', 'wb'))
+    print('PCA Fitted!')
+    for i in range(3):
+        example_to_show = X[i:i+1].detach().cpu().numpy()
+        og_image = example_to_show.reshape(image_size[0], image_size[1])
+        plt.imshow(og_image, cmap='gray')
+        plt.title('Original Image')
+        plt.figure()
+        reconstructed_example = pca.inverse_transform(pca.transform(example_to_show))
+        reconstructed_image = reconstructed_example.reshape(image_size[0], image_size[1])
+        plt.imshow(binarize(reconstructed_image), cmap='gray')
+        plt.title('Reconstructed Image')
+        plt.show()
+
+    break
 print("\nDataLoader Set!")
 print("\n____________________________________________________\n")
 
@@ -170,7 +197,8 @@ for learning_rate, batch_size, embed_size in itertools.product(lrs, bs_sizes, em
         convAE_model = ResNet_VAE(CNN_embed_dim=embed_size).to(device)
     if load_model:
         convAE_model = torch.nn.DataParallel(ResNet_VAE(CNN_embed_dim=embed_size), device_ids=args.device).to(device)
-        convAE_model.load_state_dict(torch.load('geometry_convVAE_model_lr0.0005_bs32_ems4096_exs_kl0.001_mse1_epo5.pth', map_location=device))
+        convAE_model.load_state_dict(
+            torch.load('geometry_convVAE_model_lr0.0005_bs32_ems4096_exs_kl0.001_mse1_epo5.pth', map_location=device))
     optimizer = torch.optim.Adam(convAE_model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=args.gamma)
 
@@ -207,7 +235,8 @@ for learning_rate, batch_size, embed_size in itertools.product(lrs, bs_sizes, em
             # plt.title('Original Image')
             # plt.show()
             rec_loss = mse_msssim_combined_mag_loss(weight=args.weight_mse)
-            loss, (kl, mse, ssim) = loss_function(rec_loss, target=img, pred=recon, mu=mu, logvar=logvar, kl_weight=args.kl_weight)
+            loss, (kl, mse, ssim) = loss_function(rec_loss, target=img, pred=recon, mu=mu, logvar=logvar,
+                                                  kl_weight=args.kl_weight)
 
             # Backward Propagation
             optimizer.zero_grad()
@@ -216,9 +245,10 @@ for learning_rate, batch_size, embed_size in itertools.product(lrs, bs_sizes, em
             train_loss += loss.item()
             debug_losses += np.array([kl, mse, ssim])
         print('Evaluating...')
-        test_loss, test_loss_std = evaluate(model=convAE_model, test_loader=test_loader, loss_fn=loss_function, device=device)
+        test_loss, test_loss_std = evaluate(model=convAE_model, test_loader=test_loader, loss_fn=loss_function,
+                                            device=device)
         train_loss = train_loss / len(train_loader)
-        debug_losses = np.round(debug_losses / len(train_loader),4)
+        debug_losses = np.round(debug_losses / len(train_loader), 4)
         losses.append(train_loss)
         if test_loss < best_loss:
             patiance = args.patiance
@@ -231,8 +261,9 @@ for learning_rate, batch_size, embed_size in itertools.product(lrs, bs_sizes, em
                 print(f"Early Stopping at Epoch: {epoch}")
                 break
         print(f"KL Loss: {debug_losses[0]} | MSE Loss: {debug_losses[1]} | SSIM Loss: {debug_losses[2]}")
-        print("Train Loss: {:.4f}".format(train_loss), f" | Test Loss: {np.round(test_loss,4)} +- {np.round(test_loss_std,4)}, Best Loss: {np.round(best_loss,4)}\n")
-        if (epoch+5) % 10 == 0 and args.checkpoint_folder is not None:
+        print("Train Loss: {:.4f}".format(train_loss),
+              f" | Test Loss: {np.round(test_loss, 4)} +- {np.round(test_loss_std, 4)}, Best Loss: {np.round(best_loss, 4)}\n")
+        if (epoch + 5) % 10 == 0 and args.checkpoint_folder is not None:
             checkpoint_dir = os.path.join(args.checkpoint_folder, model_name.replace('.pth', f'_epo{epoch}.pth'))
             torch.save(convAE_model.state_dict(), checkpoint_dir)
             print(f"Model Saved at Epoch {epoch} in {checkpoint_dir}")
