@@ -22,6 +22,10 @@ import glob
 import pickle
 import re
 import open3d as o3d
+import ezdxf
+from ezdxf.addons.drawing import RenderContext, Frontend
+from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
+from shapely.geometry import Polygon
 
 
 class DataPreprocessor:
@@ -468,9 +472,6 @@ class DXF2IMG(object):
     default_img_res = 300
 
     def convert_dxf2img(self, names, img_format=default_img_format, img_res=default_img_res):
-        import ezdxf
-        from ezdxf.addons.drawing import RenderContext, Frontend
-        from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
         for name in names:
             doc = ezdxf.readfile(name)
             msp = doc.modelspace()
@@ -494,6 +495,24 @@ class DXF2IMG(object):
                 fig.savefig(first_param, dpi=img_res)
 
 
+def fill_lwpolylines_with_hatch(dxf_file_path, output_file_path=None):
+    if output_file_path is None:
+        output_file_path = dxf_file_path.replace('.dxf', '_hatch.dxf')
+    doc = ezdxf.readfile(dxf_file_path)
+    msp = doc.modelspace()
+    hatch_pattern = msp.add_hatch(color=7)
+    for entity in msp:
+        if entity.dxftype() == 'LWPOLYLINE':
+            polyline = entity
+            # Check if polyline is closed
+            hatch_pattern.paths.add_polyline_path(polyline.vertices())
+
+    doc.saveas(output_file_path)
+
+
 if __name__ == '__main__':
-    data_processor = DataPreprocessor()
+    # data_processor = DataPreprocessor()
+    dxf2img = DXF2IMG()
+    fill_lwpolylines_with_hatch(r'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\0\layer_0_PEC.dxf')
+    dxf2img.convert_dxf2img(glob.glob(r'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\0\layer_0_PEC_hatch.dxf'))
     print(1)
