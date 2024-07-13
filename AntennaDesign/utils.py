@@ -27,6 +27,19 @@ from ezdxf.addons.drawing import RenderContext, Frontend
 from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
 from shapely.geometry import Polygon
 
+class DatasetPart:
+    def __init__(self):
+        self.x = None
+        self.gamma = None
+        self.radiation = None
+
+class AntennaData:
+    def __init__(self):
+        self.Data = None
+        self.n_dims = None
+        self.trn = DatasetPart()
+        self.val = DatasetPart()
+        self.tst = DatasetPart()
 
 class DataPreprocessor:
     def __init__(self):
@@ -355,36 +368,6 @@ def convert_dataset_to_dB(data):
              parameters_test=test_params, gamma_test=test_gamma, radiation_test=test_radiation)
     print('Dataset converted to dB. Saved in data_dB.npz')
 
-
-def reorganize_data(data):
-    features_to_exclude = [5, 6]
-    train_params, train_gamma, train_radiation = data['parameters_train'], data['gamma_train'], data['radiation_train']
-    val_params, val_gamma, val_radiation = data['parameters_val'], data['gamma_val'], data['radiation_val']
-    test_params, test_gamma, test_radiation = data['parameters_test'], data['gamma_test'], data['radiation_test']
-    all_params, all_gamma, all_radiation = np.concatenate((train_params, val_params, test_params),
-                                                          axis=0), np.concatenate((train_gamma, val_gamma, test_gamma),
-                                                                                  axis=0), np.concatenate(
-        (train_radiation, val_radiation, test_radiation), axis=0)
-    first_feature, second_feature = all_params[:, features_to_exclude[0]], all_params[:, features_to_exclude[1]]
-    pct20first, pct30first = np.percentile(first_feature, 20), np.percentile(first_feature, 30)
-    pct70second, pct80second = np.percentile(second_feature, 60), np.percentile(second_feature, 80)
-    test_params_idx = np.where(np.logical_or(np.logical_and(first_feature > pct20first, first_feature < pct30first),
-                                             np.logical_and(second_feature > pct70second,
-                                                            second_feature < pct80second)))
-    test_params_new, test_gamma_new, test_radiation_new = all_params[test_params_idx], all_gamma[test_params_idx], \
-        all_radiation[test_params_idx]
-    train_params_new, train_gamma_new, train_radiation_new = np.delete(all_params, test_params_idx, axis=0), np.delete(
-        all_gamma, test_params_idx, axis=0), np.delete(all_radiation, test_params_idx, axis=0)
-    val_idx = np.random.choice(train_params_new.shape[0], int(0.25 * train_params_new.shape[0]),
-                               replace=False)  # 25% of remaining data is about 20% of original data
-    val_params_new, val_gamma_new, val_radiation_new = train_params_new[val_idx], train_gamma_new[val_idx], \
-        train_radiation_new[val_idx]
-    train_params_new, train_gamma_new, train_radiation_new = np.delete(train_params_new, val_idx, axis=0), np.delete(
-        train_gamma_new, val_idx, axis=0), np.delete(train_radiation_new, val_idx, axis=0)
-    np.savez('data_reorganized.npz', parameters_train=train_params_new, gamma_train=train_gamma_new,
-             radiation_train=train_radiation_new,
-             parameters_val=val_params_new, gamma_val=val_gamma_new, radiation_val=val_radiation_new,
-             parameters_test=test_params_new, gamma_test=test_gamma_new, radiation_test=test_radiation_new)
 
 
 def produce_stats_gamma(GT_gamma, predicted_gamma, dataset_type='linear', to_print=True):

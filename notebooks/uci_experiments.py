@@ -9,7 +9,6 @@ from nits.model import *
 from nits.layer import *
 from nits.fc_model import *
 from nits.cnn_model import *
-from maf.datasets import *
 from nits.resmade import ResidualMADE
 from nits.fc_model import ResMADEModel
 from scipy.stats import gaussian_kde
@@ -294,7 +293,7 @@ for lr, hidden_dim, nr_blocks, polyak_decay, bs in itertools.product(lr_grid, hi
     data_path = r'../etof_folder_git/AntennaDesign_data/newdata_dB.npz'
     assert os.path.exists(data_path)
     data_tmp = np.load(data_path)
-    data = miniboone.MINIBOONE()
+    data = AntennaData()
     data.Data = data_tmp
     data.n_dims = data_tmp['parameters_train'].shape[1]
     scaler = standard_scaler()
