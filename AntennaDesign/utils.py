@@ -494,6 +494,7 @@ def fill_lwpolylines_with_hatch(dxf_file_path, output_file_path=None,color=7):
             hatch_pattern.paths.add_polyline_path(polyline.vertices())
 
     doc.saveas(output_file_path)
+    return output_file_path
 
 def merge_dxf_files(input_files, output_file):
     # Create a new DXF document for the merged output
@@ -525,22 +526,20 @@ if __name__ == '__main__':
     # data_processor = DataPreprocessor()
     dxf2img = DXF2IMG()
     all_images = []
-    for i in range(10):
-        layer_path = rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\layer_0_PEC.dxf'
-        feed_pec_path = rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\feed_PEC.dxf'
-        feed_path = rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\feed.dxf'
-        fill_lwpolylines_with_hatch(layer_path)
-        fill_lwpolylines_with_hatch(feed_pec_path)
-        fill_lwpolylines_with_hatch(feed_path, color=1)
-        merge_dxf_files([layer_path.replace('.dxf', '_hatch.dxf'), feed_pec_path.replace('.dxf', '_hatch.dxf'), feed_path.replace('.dxf', '_hatch.dxf')],
-                        rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\merged_hatch.dxf')
+    data_path = r"C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_15000_3envs"
+    for folder in sorted(os.listdir(data_path)):
+        print('working on folder:', folder,end='\n')
+        models_path = os.path.join(data_path, folder, 'models')
+        for model_path in sorted(os.listdir(models_path)):
+            print('working on model:', model_path)
+            layer_path = os.path.join(models_path, model_path, 'layer_0_PEC.dxf')
+            feed_pec_path = os.path.join(models_path, model_path, 'feed_PEC.dxf')
+            feed_path = os.path.join(models_path, model_path, 'feed.dxf')
+            layer_output_path = fill_lwpolylines_with_hatch(layer_path)
+            feed_pec_output_path = fill_lwpolylines_with_hatch(feed_pec_path)
+            feed_output_path = fill_lwpolylines_with_hatch(feed_path, color=1)
+            merged_output_path = os.path.join(models_path, model_path, 'merged_hatch.dxf')
+            merge_dxf_files([layer_output_path, feed_pec_output_path, feed_output_path], merged_output_path)
+            dxf2img.convert_dxf2img([merged_output_path])
 
-
-        dxf2img.convert_dxf2img(glob.glob(rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\layer_0_PEC_hatch.dxf'))
-        dxf2img.convert_dxf2img(glob.glob(
-            rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\merged_hatch.dxf'))
-        dxf2img.convert_dxf2img(glob.glob(
-            rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\feed_hatch.dxf'))
-        im = cv2.imread(rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\layer_0_PEC_hatch.png')
-        all_images.append(im)
-    pass
+            pass

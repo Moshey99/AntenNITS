@@ -368,7 +368,7 @@ for lr, hidden_dim, nr_blocks, polyak_decay, bs in itertools.product(lr_grid, hi
     if len(devices) > 1:
         model = nn.DataParallel(model, device_ids=[int(i) for i in args.gpu.split(',')])
     n = 150
-    path = 'models\\cond_ANT_model_lr_0.0002_hd_256_cd_512_nr_8_pd_0.9995_bs_30.pth'
+    path = 'models\\cond_ANT_model_lr_0.0002_hd_256_cd_512_nr_8_pd_0.9995_bs_30_BEST_GEN1.pth'
     distances = []
     print(path)
     folder_to_save = path.split('\\')[1][:-4]
