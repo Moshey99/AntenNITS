@@ -469,38 +469,41 @@ def save_antenna_mat(antenna: torch.Tensor, path: str, scaler: standard_scaler):
 
 class DXF2IMG(object):
     default_img_format = '.png'
-    default_img_res = 300
+    default_img_res = 30  # Adjust DPI for better quality
 
     def convert_dxf2img(self, names, img_format=default_img_format, img_res=default_img_res):
         for name in names:
             doc = ezdxf.readfile(name)
             msp = doc.modelspace()
+
             # Recommended: audit & repair DXF document before rendering
             auditor = doc.audit()
-            # The auditor.errors attribute stores severe errors,
-            # which *may* raise exceptions when rendering.
             if len(auditor.errors) != 0:
-                raise exception("The DXF document is damaged and can't be converted!")
-            else:
-                fig = plt.figure()
-                ax = fig.add_axes([0, 0, 1, 1])
-                ctx = RenderContext(doc)
-                ctx.set_current_layout(msp)
-                ctx.current_layout_properties.set_colors(bg='#FFFFFF')
-                out = MatplotlibBackend(ax)
-                Frontend(ctx, out).draw_layout(msp, finalize=True)
+                raise Exception("The DXF document is damaged and can't be converted!")
 
-                img_name = re.findall("(\S+)\.", name)  # select the image name that is the same as the dxf file name
-                first_param = ''.join(img_name) + img_format  # concatenate list and string
-                fig.savefig(first_param, dpi=img_res)
+            # Calculate figure size in inches to match desired pixel dimensions
+            figsize_inches = (144 / img_res, 190 / img_res)
+            fig = plt.figure(figsize=figsize_inches)
+            ax = fig.add_axes([0, 0, 1, 1])
+            ctx = RenderContext(doc)
+            ctx.set_current_layout(msp)
+            ctx.current_layout_properties.set_colors(bg='#FFFFFF')
+            out = MatplotlibBackend(ax)
+            Frontend(ctx, out).draw_layout(msp, finalize=True)
+
+            # Construct the output image file path
+            img_name = re.findall("(\S+)\.", name)[0]  # Select the image name that is the same as the DXF file name
+            img_path = f"{img_name}{img_format}"
+            fig.savefig(img_path, dpi=img_res)
+            plt.close(fig)  # Close the figure to free up memory
 
 
-def fill_lwpolylines_with_hatch(dxf_file_path, output_file_path=None):
+def fill_lwpolylines_with_hatch(dxf_file_path, output_file_path=None,color=7):
     if output_file_path is None:
         output_file_path = dxf_file_path.replace('.dxf', '_hatch.dxf')
     doc = ezdxf.readfile(dxf_file_path)
     msp = doc.modelspace()
-    hatch_pattern = msp.add_hatch(color=7)
+    hatch_pattern = msp.add_hatch(color=color)
     for entity in msp:
         if entity.dxftype() == 'LWPOLYLINE':
             polyline = entity
@@ -509,10 +512,52 @@ def fill_lwpolylines_with_hatch(dxf_file_path, output_file_path=None):
 
     doc.saveas(output_file_path)
 
+def merge_dxf_files(input_files, output_file):
+    # Create a new DXF document for the merged output
+    merged_doc = ezdxf.new()
+
+
+
+    for idx, file in enumerate(input_files):
+        # Read each DXF file
+        doc = ezdxf.readfile(file)
+        msp = doc.modelspace()
+
+        # Create a new layer for each input file
+        layer_name = f'File_{idx + 1}'
+        merged_doc.layers.new(name=layer_name)
+
+        # Iterate through entities in the modelspace of the input file
+        for entity in msp:
+            # Copy each entity to the modelspace of the merged document
+            merged_entity = entity.copy()  # Create a copy of the entity
+            merged_entity.dxf.layer = layer_name  # Assign entity to the corresponding layer
+            merged_doc.modelspace().add_entity(merged_entity)  # Add the copied entity to the merged modelspace
+
+    # Save the merged DXF document to the output file
+    merged_doc.saveas(output_file)
+
 
 if __name__ == '__main__':
     # data_processor = DataPreprocessor()
     dxf2img = DXF2IMG()
-    fill_lwpolylines_with_hatch(r'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\0\layer_0_PEC.dxf')
-    dxf2img.convert_dxf2img(glob.glob(r'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\0\layer_0_PEC_hatch.dxf'))
-    print(1)
+    all_images = []
+    for i in range(10):
+        layer_path = rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\layer_0_PEC.dxf'
+        feed_pec_path = rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\feed_PEC.dxf'
+        feed_path = rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\feed.dxf'
+        fill_lwpolylines_with_hatch(layer_path)
+        fill_lwpolylines_with_hatch(feed_pec_path)
+        fill_lwpolylines_with_hatch(feed_path, color=1)
+        merge_dxf_files([layer_path.replace('.dxf', '_hatch.dxf'), feed_pec_path.replace('.dxf', '_hatch.dxf'), feed_path.replace('.dxf', '_hatch.dxf')],
+                        rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\merged_hatch.dxf')
+
+
+        dxf2img.convert_dxf2img(glob.glob(rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\layer_0_PEC_hatch.dxf'))
+        dxf2img.convert_dxf2img(glob.glob(
+            rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\merged_hatch.dxf'))
+        dxf2img.convert_dxf2img(glob.glob(
+            rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\feed_hatch.dxf'))
+        im = cv2.imread(rf'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\models\{str(i)}\layer_0_PEC_hatch.png')
+        all_images.append(im)
+    pass
