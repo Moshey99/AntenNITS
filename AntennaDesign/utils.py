@@ -27,11 +27,13 @@ from ezdxf.addons.drawing import RenderContext, Frontend
 from ezdxf.addons.drawing.matplotlib import MatplotlibBackend
 from shapely.geometry import Polygon
 
+
 class DatasetPart:
     def __init__(self):
         self.x = None
         self.gamma = None
         self.radiation = None
+
 
 class AntennaData:
     def __init__(self):
@@ -41,20 +43,20 @@ class AntennaData:
         self.val = DatasetPart()
         self.tst = DatasetPart()
 
-class DataPreprocessor:
-    def __init__(self):
-        self.num_data_points = 10000
-        self.geometry_preprocessor()
-        # self.gamma_preprocessor()
-        # self.radiation_preprocessor()
 
-    def radiation_preprocessor(self):
+class DataPreprocessor:
+    def __init__(self, folder_path):
+        self.num_data_points = len(os.listdir(folder_path))
+        self.folder_path = folder_path
+
+    def radiation_preprocessor(self, plot=False, debug=False):
+        print('Preprocessing radiations')
         all_radiations = []
-        folder_path = 'C:\\Users\\moshey\\PycharmProjects\\etof_folder_git\\AntennaDesign_data\\data_10000x1\\data\\spectrum_moshe'
-        for i in range(self.num_data_points):
-            print('working on antenna number:', i + 1, 'out of:', self.num_data_points)
+        folder_path = self.folder_path
+        for idx, i in enumerate(os.listdir(folder_path)):
+            print('working on antenna number:', i, 'out of:', self.num_data_points)
             im_resized = np.zeros((4, 181, 91))
-            file_path = os.path.join(folder_path, f'ant{i}_farfield.txt')
+            file_path = os.path.join(folder_path, i, f'{i}_farfield.txt')
             df = pd.read_csv(file_path, sep='\s+', skiprows=[0, 1], header=None)
             df = df.apply(pd.to_numeric, errors='coerce')
             arr = np.asarray(df)
@@ -65,56 +67,90 @@ class DataPreprocessor:
             im_resh = np.transpose(im.reshape(angle2_res, angle1_res, -1), (2, 0, 1))
             im_resh = im_resh[[0, 2, 1, 3], :, :]  # rearrange the channels to be [mag1, mag2, phase1, phase2]
             for j in range(im_resh.shape[0]):
-                titles = ['mag1', 'mag2', 'phase1', 'phase2']
-                plt.subplot(2, 2, j + 1)
-                current = im_resh[j]
-                im_resized[j] = np.clip(cv2.resize(current, (91, 181), interpolation=cv2.INTER_LINEAR), current.min(),
-                                        current.max())
-                if j < 2:
-                    im_resized[j] = 10 * np.log10(im_resized[j])
-                else:
-                    im_resized[j] = np.deg2rad(im_resized[j]) - np.pi
-                plt.imshow(im_resized[j])
-                plt.title(titles[j])
-                plt.colorbar()
-            plt.show()
+                current_im = im_resh[j]
+                im_resized[j] = np.clip(cv2.resize(current_im, (91, 181), interpolation=cv2.INTER_LINEAR),
+                                        current_im.min(), current_im.max())
+                if plot:
+                    titles = ['mag1', 'mag2', 'phase1', 'phase2']
+                    plt.subplot(2, 2, j + 1)
+                    if j < 2:
+                        assert np.all(im_resized[j] >= 0), 'Negative values in radiation magnitude'
+                        im_resized[j] = 10 * np.log10(im_resized[j])
+                    else:
+                        assert np.all(im_resized[j] >= 0) and np.all(
+                            im_resized[j] <= 360), 'Phase values out of range 0-360'
+                        im_resized[j] = np.deg2rad(im_resized[j]) - np.pi
+                    plt.imshow(im_resized[j])
+                    plt.title(titles[j])
+                    plt.colorbar()
+                    plt.show()
             all_radiations.append(im_resized)
+
         all_radiations = np.array(all_radiations)
 
         radiations_mag, radiations_phase = all_radiations[:, :2], all_radiations[:, 2:]
+        assert np.all(radiations_mag >= 0), 'Negative values in radiation magnitude'
+        assert np.all(radiations_phase >= 0) and np.all(radiations_phase <= 360), 'Phase values out of range 0-360'
         radiations_phase_radians = np.deg2rad(radiations_phase) - np.pi
         radiations_mag_dB = 10 * np.log10(radiations_mag)
         radiations = np.concatenate((radiations_mag_dB, radiations_phase_radians), axis=1)
         saving_folder = os.path.join(Path(folder_path).parent, 'processed_data')
-        np.save(os.path.join(saving_folder, 'radiations.npy'), radiations)
+        if not debug:
+            np.save(os.path.join(saving_folder, 'radiations.npy'), radiations)
         print('Radiations saved successfully with mag in dB and phase in radians')
 
-    def gamma_preprocessor(self):
-
+    def gamma_preprocessor(self, debug=False):
+        print('Preprocessing gammas')
         all_gammas = []
-        folder_path = 'C:\\Users\\moshey\\PycharmProjects\\etof_folder_git\\AntennaDesign_data\\data_10000x1\\data\\spectrum_moshe'
-        for i in range(self.num_data_points):
-            print('working on antenna number:', i + 1, 'out of:', self.num_data_points)
-            file_path = os.path.join(folder_path, f'ant{i}_S11.pickle')
+        folder_path = self.folder_path
+        for i in sorted(os.listdir(folder_path)):
+            print('working on antenna number:', i, 'out of:', self.num_data_points)
+            file_path = os.path.join(folder_path, i, f'{i}_S11.pickle')
             with open(file_path, 'rb') as f:
                 gamma_raw = pickle.load(f)
                 gamma_complex = gamma_raw[0]
                 gamma_mag, gamma_phase = np.abs(gamma_complex), np.angle(
                     gamma_complex)  # gamma_phase in radians already
+                assert np.all(gamma_mag >= 0), 'Negative values in gamma magnitude'
+                assert np.all(gamma_phase >= -np.pi) and np.all(
+                    gamma_phase <= np.pi), 'Phase values out of range -pi-pi'
                 gamma_mag_dB = 10 * np.log10(gamma_mag)
                 gamma = np.concatenate((gamma_mag_dB, gamma_phase))
                 all_gammas.append(gamma)
         all_gammas = np.array(all_gammas)
-        np.save(os.path.join(Path(folder_path).parent, 'processed_data', 'gammas.npy'), all_gammas)
-        np.save(os.path.join(Path(folder_path).parent, 'processed_data', 'frequencies.npy'), gamma_raw[1])
+        if not debug:
+            np.save(os.path.join(Path(folder_path).parent, 'processed_data', 'gammas.npy'), all_gammas)
+            np.save(os.path.join(Path(folder_path).parent, 'processed_data', 'frequencies.npy'), gamma_raw[1])
         print('Gammas saved successfully with mag in dB and phase in radians')
         pass
+    @staticmethod
+    def assert_radiation_rules(radiation: np.ndarray):
+        mag_db = radiation[:, :int(radiation.shape[1] / 2)]
+        phase_rad = radiation[:, int(radiation.shape[1] / 2):]
+        mag_linear = 10 ** (mag_db / 10)
+        assert np.all(mag_linear >= 0), 'Negative values in radiation magnitude'
+        assert np.all(phase_rad >= -np.pi) and np.all(
+            phase_rad <= np.pi), 'Phase values out of range -pi - pi radians'
+        print('All radiation rules are satisfied!')
+        return True
+
+    @staticmethod
+    def assert_gamma_rules(gamma: np.ndarray):
+        mag_db = gamma[:, :int(gamma.shape[1] / 2)]
+        phase_rad = gamma[:, int(gamma.shape[1] / 2):]
+        mag_linear = 10 ** (mag_db / 10)
+        assert np.all(mag_linear >= 0), 'Negative values in gamma magnitude'
+        assert np.all(phase_rad >= -np.pi) and np.all(
+            phase_rad <= np.pi), 'Phase values out of range -pi - pi radians'
+        print('All gamma rules are satisfied!')
+        return True
 
     def geometry_preprocessor(self):
+        print('Preprocessing geometries')
         voxel_size = 0.125
         min_bound_org = np.array([5.4, 3.825, 6.375]) - voxel_size
         max_bound_org = np.array([54., 3.83, 42.5]) + voxel_size
-        for i in range(2335,10000):
+        for i in range(2335, 10000):
             if i == 3234 or i == 9729:
                 continue
             # a = np.load(r'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\processed_data\voxels\voxels_2050.npy')
@@ -127,25 +163,26 @@ class DataPreprocessor:
                 mesh, voxel_size=voxel_size, min_bound=min_bound_org, max_bound=max_bound_org)
             voxels = vg.get_voxels()
             indices = np.stack(list(vx.grid_index for vx in voxels))
-            quary_x = np.arange(min_bound_org[0]+0.5*voxel_size,max_bound_org[0], step=voxel_size)
+            quary_x = np.arange(min_bound_org[0] + 0.5 * voxel_size, max_bound_org[0], step=voxel_size)
             quary_y = [3.825000047683716]
-            quary_z = np.arange(min_bound_org[2]+0.5*voxel_size,max_bound_org[2], step=voxel_size)
+            quary_z = np.arange(min_bound_org[2] + 0.5 * voxel_size, max_bound_org[2], step=voxel_size)
             quary_array = np.zeros((len(quary_x), 1, len(quary_z)))
             start = time.time()
-            for ii,x_val in enumerate(quary_x):
-                for jj,y_val in enumerate(quary_y):
-                    for kk,z_val in enumerate(quary_z):
-                        ind = vg.get_voxel([x_val,y_val,z_val])
+            for ii, x_val in enumerate(quary_x):
+                for jj, y_val in enumerate(quary_y):
+                    for kk, z_val in enumerate(quary_z):
+                        ind = vg.get_voxel([x_val, y_val, z_val])
                         exists = np.any(np.all(indices == ind, axis=1))
-                        quary_array[ii,jj,kk] = exists
-            np.save(os.path.join(r'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\processed_data\voxels',
-                                 f'voxels_{i}.npy'), quary_array.astype(bool))
+                        quary_array[ii, jj, kk] = exists
+            np.save(os.path.join(
+                r'C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_10000x1\data\processed_data\voxels',
+                f'voxels_{i}.npy'), quary_array.astype(bool))
             print(f'saved antenna {i}. Process time was:', time.time() - start)
 
     def stp_to_stl(self):
         import trimesh
         model_folder = 'C:\\Users\\moshey\\PycharmProjects\\etof_folder_git\\AntennaDesign_data\\data_10000x1\\data\\models'
-        all =[]
+        all = []
         for i in range(10000):
             print('working on antenna number:', i + 1, 'out of:', self.num_data_points)
             stp_path = os.path.join(model_folder, f'{i}', 'Antenna_PEC_STEP.stp')
@@ -369,7 +406,6 @@ def convert_dataset_to_dB(data):
     print('Dataset converted to dB. Saved in data_dB.npz')
 
 
-
 def produce_stats_gamma(GT_gamma, predicted_gamma, dataset_type='linear', to_print=True):
     if dataset_type == 'linear':
         GT_gamma[:, :int(GT_gamma.shape[1] / 2)] = 10 * np.log10(GT_gamma[:, :int(GT_gamma.shape[1] / 2)])
@@ -481,7 +517,7 @@ class DXF2IMG(object):
             plt.close(fig)  # Close the figure to free up memory
 
 
-def fill_lwpolylines_with_hatch(dxf_file_path, output_file_path=None,color=7):
+def fill_lwpolylines_with_hatch(dxf_file_path, output_file_path=None, color=7):
     if output_file_path is None:
         output_file_path = dxf_file_path.replace('.dxf', '_hatch.dxf')
     doc = ezdxf.readfile(dxf_file_path)
@@ -496,11 +532,10 @@ def fill_lwpolylines_with_hatch(dxf_file_path, output_file_path=None,color=7):
     doc.saveas(output_file_path)
     return output_file_path
 
+
 def merge_dxf_files(input_files, output_file):
     # Create a new DXF document for the merged output
     merged_doc = ezdxf.new()
-
-
 
     for idx, file in enumerate(input_files):
         # Read each DXF file
@@ -522,15 +557,18 @@ def merge_dxf_files(input_files, output_file):
     merged_doc.saveas(output_file)
 
 
-if __name__ == '__main__':
-    # data_processor = DataPreprocessor()
+def run_dxf2img():
     dxf2img = DXF2IMG()
     all_images = []
     data_path = r"C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_15000_3envs"
     for folder in sorted(os.listdir(data_path)):
-        print('working on folder:', folder,end='\n')
+        print('working on folder:', folder, end='\n')
         models_path = os.path.join(data_path, folder, 'models')
         for model_path in sorted(os.listdir(models_path)):
+            merged_output_path = os.path.join(models_path, model_path, 'merged_hatch.dxf')
+            if os.path.exists(merged_output_path):
+                print('already processed:', model_path)
+                continue
             print('working on model:', model_path)
             layer_path = os.path.join(models_path, model_path, 'layer_0_PEC.dxf')
             feed_pec_path = os.path.join(models_path, model_path, 'feed_PEC.dxf')
@@ -538,8 +576,20 @@ if __name__ == '__main__':
             layer_output_path = fill_lwpolylines_with_hatch(layer_path)
             feed_pec_output_path = fill_lwpolylines_with_hatch(feed_pec_path)
             feed_output_path = fill_lwpolylines_with_hatch(feed_path, color=1)
-            merged_output_path = os.path.join(models_path, model_path, 'merged_hatch.dxf')
             merge_dxf_files([layer_output_path, feed_pec_output_path, feed_output_path], merged_output_path)
             dxf2img.convert_dxf2img([merged_output_path])
 
             pass
+
+
+if __name__ == '__main__':
+    data_processor = DataPreprocessor(folder_path=r"C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data"
+                                                  r"\data_15000_3envs\data_2500x2\results")
+    # data_processor.gamma_preprocessor(debug=True)
+    # data_processor.radiation_preprocessor(plot=False, debug=True)
+    data_path = r"C:\Users\moshey\PycharmProjects\etof_folder_git\AntennaDesign_data\data_15000_3envs\data_10000x1\processed_data"
+    gamma, radiation = np.load(os.path.join(data_path, 'gammas.npy')), np.load(os.path.join(data_path, 'radiations.npy'))
+    data_processor.assert_gamma_rules(gamma)
+    data_processor.assert_radiation_rules(radiation)
+    pass
+    # run_dxf2img()
