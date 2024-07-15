@@ -193,8 +193,8 @@ def generate_overall_stats(model, data, top_n=5):
         sort_idx_from_metrics = sort_by_metric(*gamma_metrics,*radiation_metrics)
         smp = smp[sort_idx_from_metrics]
         smp = smp[:top_n]
-        variations.append( torch.std(scaler.inverse(smp),dim=0) )
-        generated_gammas,generated_radiations = forward_model(smp)
+        variations.append(torch.std(scaler.inverse(smp), dim=0))
+        generated_gammas, generated_radiations = forward_model(smp)
         generated_gammas[:,:generated_gammas.shape[1]//2] = 10*torch.log10(generated_gammas[:,:generated_gammas.shape[1]//2])
         freq_downsample_rate = 4
         freqs = np.arange(2000, 6000.1, 4)
@@ -307,6 +307,7 @@ for lr, hidden_dim, nr_blocks, polyak_decay, bs in itertools.product(lr_grid, hi
     data.val.x, data.val.gamma,data.val.radiation = val_params_scaled.astype(np.float32), downsample_gamma(data_tmp['gamma_val'],freq_downsample_rate), data_tmp['radiation_val']
     data.tst.x, data.tst.gamma,data.tst.radiation = test_params_scaled.astype(np.float32), downsample_gamma(data_tmp['gamma_test'],freq_downsample_rate), data_tmp['radiation_test']
     freqs = freqs[::freq_downsample_rate]
+    rad_channels = data.trn.radiation.shape[1]
     default_dropout = 0
     args.patience = args.patience if args.patience >= 0 else default_patience
     args.dropout = args.dropout if args.dropout >= 0.0 else default_dropout
@@ -382,7 +383,7 @@ for lr, hidden_dim, nr_blocks, polyak_decay, bs in itertools.product(lr_grid, hi
     condition = (condition_gamma,condition_radiation)
     plot_condition((condition_gamma,condition_radiation_downsampled),freqs)
     real_samples = torch.Tensor(data.trn.x)
-    forward_model = forward_GammaRad()
+    forward_model = forward_GammaRad(radiation_channels=rad_channels)
     weights_path = (r'AntennaDesign/checkpoints/forward_radiation_huberloss.pth',r'AntennaDesign/checkpoints/forward_gamma_smoothness_0.001_0.0001.pth')
     forward_model.load_and_freeze_forward(weights_path)
     dict_prints = {0: 'generated sample', 1: 'real sample'}
