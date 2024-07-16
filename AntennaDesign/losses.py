@@ -96,7 +96,7 @@ class gamma_loss_dB(nn.Module):
         return loss+smooth_loss_mag+smooth_loss_phase
 
 class radiation_loss_dB(nn.Module):
-    def __init__(self,mag_loss='huber',rad_phase_factor=1):
+    def __init__(self,mag_loss='huber',rad_phase_factor=1.):
         super(radiation_loss_dB,self).__init__()
         self.phase_loss = CircularLoss()
         if mag_loss == 'combined':
